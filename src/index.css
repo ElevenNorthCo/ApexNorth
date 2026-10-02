@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-ink: #000000;
+  --color-panel: #1c1f2a;
+  --color-panel-2: #252935;
+  --color-line: #343949;
+  --color-muted: #9aa0b4;
+  --color-accent: #b18cf2;
+
+  --color-pos: #4a9eff;
+  --color-lap: #a855f7;
+  --color-laps: #f59e0b;
+  --color-laptime: #3fb8d8;
+  --color-brk: #ef4444;
+  --color-thr: #4caf50;
+  --color-fuel: #f2e14c;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: var(--font-sans);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Slashed-zero digital look for numbers. */
+.num {
+  font-family: var(--font-mono);
+  font-feature-settings: "zero" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #343949;
+  border-radius: 3px;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.blink {
+  animation: blink 0.18s steps(1) infinite;
+}
+
+/* uPlot dark theme tweaks */
+.uplot,
+.u-legend {
+  font-family: var(--font-mono);
+  color: #9aa0b4;
+}
+.u-legend {
+  display: none;
+}

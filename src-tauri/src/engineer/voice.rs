@@ -1,0 +1,187 @@
+//! Speech output: Piper CLI → cached WAV → rodio playback, on one worker
+//! thread with a small priority queue that drops stale messages.
+
+use crossbeam_channel::{Receiver, Sender};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::io::{BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+use crate::settings::VoiceSettings;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Priority {
+    Low,
+    Normal,
+    High,
+}
+
+impl Priority {
+    fn max_age(self) -> Duration {
+        match self {
+            Priority::Low => Duration::from_secs(5),
+            Priority::Normal => Duration::from_secs(10),
+            Priority::High => Duration::from_secs(20),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Callout {
+    pub text: String,
+    pub priority: Priority,
+    pub at: Instant,
+}
+
+impl Callout {
+    pub fn new(priority: Priority, text: impl Into<String>) -> Callout {
+        Callout { text: text.into(), priority, at: Instant::now() }
+    }
+}
+
+enum Msg {
+    Say(Callout),
+    Configure(VoiceSettings),
+}
+
+#[derive(Clone)]
+pub struct Voice {
+    tx: Sender<Msg>,
+}
+
+impl Voice {
+    /// `on_error` is called when a callout cannot be spoken, so the UI can say why.
+    pub fn start(settings: VoiceSettings, cache_dir: PathBuf, on_error: impl Fn(String) + Send + 'static) -> Voice {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        std::thread::Builder::new()
+            .name("voice".into())
+            .spawn(move || worker(rx, settings, cache_dir, on_error))
+            .expect("spawn voice thread");
+        Voice { tx }
+    }
+
+    pub fn say(&self, c: Callout) {
+        let _ = self.tx.send(Msg::Say(c));
+    }
+
+    pub fn configure(&self, s: VoiceSettings) {
+        let _ = self.tx.send(Msg::Configure(s));
+    }
+}
+
+/// Render `text` to a WAV file with Piper, reusing a cached file when possible.
+pub fn synthesize(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<PathBuf, String> {
+    if s.piper_path.is_empty() {
+        return Err("Piper not found. Set the Piper path in Settings.".into());
+    }
+    if s.model_path.is_empty() {
+        return Err("No voice model selected. Choose a Piper .onnx voice in Settings.".into());
+    }
+    let mut h = DefaultHasher::new();
+    (&s.model_path, s.length_scale.to_bits(), text).hash(&mut h);
+    let out = cache_dir.join(format!("{:016x}.wav", h.finish()));
+    if out.is_file() {
+        return Ok(out);
+    }
+    std::fs::create_dir_all(cache_dir).map_err(|e| e.to_string())?;
+    let tmp = out.with_extension("tmp.wav");
+    let mut child = Command::new(&s.piper_path)
+        .arg("--model")
+        .arg(&s.model_path)
+        .arg("--length-scale")
+        .arg(format!("{:.2}", s.length_scale))
+        .arg("--output-file")
+        .arg(&tmp)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Could not start Piper ({}): {e}", s.piper_path))?;
+    child
+        .stdin
+        .take()
+        .ok_or("no stdin")?
+        .write_all(text.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !output.status.success() || !tmp.is_file() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        let last = err.lines().last().unwrap_or("unknown error");
+        return Err(format!("Piper failed: {last}"));
+    }
+    std::fs::rename(&tmp, &out).map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on_error: impl Fn(String)) {
+    // The audio device is opened lazily and kept for the life of the thread.
+    let mut audio: Option<(rodio::OutputStream, rodio::OutputStreamHandle)> = None;
+    let mut queue: Vec<Callout> = Vec::new();
+    loop {
+        let msg = if queue.is_empty() {
+            match rx.recv() {
+                Ok(m) => Some(m),
+                Err(_) => return,
+            }
+        } else {
+            rx.try_recv().ok()
+        };
+        match msg {
+            Some(Msg::Configure(s)) => {
+                settings = s;
+                continue;
+            }
+            Some(Msg::Say(c)) => {
+                queue.push(c);
+                // Drain anything else waiting so priorities apply.
+                while let Ok(m) = rx.try_recv() {
+                    match m {
+                        Msg::Say(c) => queue.push(c),
+                        Msg::Configure(s) => settings = s,
+                    }
+                }
+            }
+            None => {}
+        }
+        queue.retain(|c| c.at.elapsed() < c.priority.max_age());
+        // Highest priority first, oldest first within a priority.
+        queue.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.at.cmp(&b.at)));
+        if queue.is_empty() {
+            continue;
+        }
+        let c = queue.remove(0);
+        if !settings.enabled {
+            queue.clear();
+            continue;
+        }
+        let wav = match synthesize(&settings, &cache_dir, &c.text) {
+            Ok(w) => w,
+            Err(e) => {
+                on_error(e);
+                continue;
+            }
+        };
+        if audio.is_none() {
+            audio = rodio::OutputStream::try_default().ok();
+        }
+        let Some((_, handle)) = &audio else {
+            on_error("No audio output device found.".into());
+            continue;
+        };
+        if let Err(e) = play(handle, &wav, settings.volume) {
+            on_error(format!("Playback failed: {e}"));
+        }
+    }
+}
+
+fn play(handle: &rodio::OutputStreamHandle, wav: &Path, volume: f32) -> Result<(), String> {
+    let file = std::fs::File::open(wav).map_err(|e| e.to_string())?;
+    let source = rodio::Decoder::new(BufReader::new(file)).map_err(|e| e.to_string())?;
+    let sink = rodio::Sink::try_new(handle).map_err(|e| e.to_string())?;
+    sink.set_volume(volume.clamp(0.0, 1.0));
+    sink.append(source);
+    sink.sleep_until_end();
+    Ok(())
+}
