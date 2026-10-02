@@ -1,4 +1,12 @@
-# ApexNorth
+<p align="center">
+  <img src="docs/icon.png" alt="ApexNorth" width="220" />
+</p>
+
+<h1 align="center">ApexNorth</h1>
+
+<p align="center"><b>Live GT7 telemetry dashboard &amp; AI race engineer</b><br/>macOS · Windows · Linux</p>
+
+---
 
 **A live telemetry dashboard and AI race engineer for Gran Turismo 7.** It runs on macOS, Windows and Linux.
 
@@ -255,7 +263,7 @@ The tests cover:
 - [ ] Multiple dashboard layouts, plus speed/G-force/steering widgets
 - [ ] Pre-race strategy briefing (fuel needed, planned stops)
 - [ ] GitHub Actions builds for macOS, Windows and Linux, plus auto-update
-- [ ] App icon and branding
+- [x] App icon and branding
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application
