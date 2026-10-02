@@ -184,6 +184,9 @@ impl Packet {
         for (i, v) in self.rotation.iter().enumerate() {
             put(0x1C + i * 4, &v.to_le_bytes());
         }
+        for (i, v) in self.angular_velocity.iter().enumerate() {
+            put(0x2C + i * 4, &v.to_le_bytes());
+        }
         put(0x3C, &self.rpm.to_le_bytes());
         put(0x44, &self.fuel.to_le_bytes());
         put(0x48, &self.fuel_capacity.to_le_bytes());

@@ -1,18 +1,28 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type Callouts, type Settings } from "../lib/api";
+import { api, type Callouts, type ChatterLevel, type Settings } from "../lib/api";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
 
 const CALLOUTS: { key: keyof Callouts; label: string; hint: string }[] = [
-  { key: "lapTimes", label: "Lap times", hint: "Every lap, plus personal bests and the final lap" },
-  { key: "fuel", label: "Fuel", hint: "Laps of fuel left and critical warnings" },
-  { key: "pitWindow", label: "Pit window", hint: "Window open, box this lap" },
-  { key: "tyres", label: "Tyres", hint: "Overheating or cold tyres" },
-  { key: "wheelSlip", label: "Wheelspin & lock-ups", hint: "Repeated slip on exit or under braking" },
+  { key: "lapTimes", label: "Lap times", hint: "Every lap, personal bests and the final lap" },
+  { key: "sectors", label: "Sector coaching", hint: "Time gained or lost per sector, purple sectors" },
+  { key: "pace", label: "Pace & encouragement", hint: "Consistency, improving trends, a strong lap building" },
+  { key: "fuel", label: "Fuel", hint: "Usage per lap, laps left, critical warnings" },
+  { key: "pitStrategy", label: "Pit strategy", hint: "Pit window, target lap, box calls" },
+  { key: "tyres", label: "Tyres", hint: "Temperatures, imbalance, estimated degradation" },
+  { key: "wheelSlip", label: "Wheelspin & lock-ups", hint: "Big slides and repeated slip" },
+  { key: "incidents", label: "Incidents", hint: "Spins and what to watch after one" },
   { key: "raceStart", label: "Race start", hint: "Lights out call" },
   { key: "position", label: "Grid position", hint: "Starting slot before the race" },
+];
+
+const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
+  { value: "minimal", label: "Minimal", hint: "Critical information only." },
+  { value: "normal", label: "Normal", hint: "Useful race updates without excessive chatter." },
+  { value: "chatty", label: "Chatty", hint: "Frequent coaching and strategy updates." },
+  { value: "crewChief", label: "Crew Chief", hint: "Maximum useful race-engineer feedback." },
 ];
 
 export function SettingsView() {
@@ -141,7 +151,17 @@ export function SettingsView() {
           </div>
         </Section>
 
-        <Section title="Callouts">
+        <Section title="Race engineer">
+          <Row label="Engineer chatter" hint={CHATTER.find((c) => c.value === v.chatter)?.hint}>
+            <Segmented
+              value={v.chatter}
+              options={CHATTER.map((c) => [c.value, c.label])}
+              onChange={(c) => update((s) => void (s.voice.chatter = c as ChatterLevel))}
+            />
+          </Row>
+        </Section>
+
+        <Section title="Callout categories">
           {CALLOUTS.map((c) => (
             <Row key={c.key} label={c.label} hint={c.hint}>
               <Toggle

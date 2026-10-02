@@ -50,6 +50,8 @@ pub struct LapSummary {
     pub time_ms: i64,
     pub is_pit: bool,
     pub is_valid: bool,
+    /// Why the lap is invalid (see `InvalidReason`), for laps saved since Phase 3.5.
+    pub invalid_reason: Option<String>,
     pub sectors_ms: Vec<u32>,
     pub fuel_used_pct: Option<f64>,
     pub max_speed: f64,
@@ -76,7 +78,7 @@ fn decode(blob: &[u8]) -> Result<Vec<Sample>> {
     bincode::deserialize(&raw).map_err(err)
 }
 
-const LAP_COLS: &str = "l.id, l.session_id, l.lap_no, l.time_ms, l.is_pit, l.is_valid, l.sectors, l.fuel_used, l.max_speed";
+const LAP_COLS: &str = "l.id, l.session_id, l.lap_no, l.time_ms, l.is_pit, l.is_valid, l.sectors, l.fuel_used, l.max_speed, l.invalid_reason";
 
 fn lap_row(r: &rusqlite::Row) -> rusqlite::Result<LapSummary> {
     let sectors: String = r.get(6)?;
@@ -90,6 +92,7 @@ fn lap_row(r: &rusqlite::Row) -> rusqlite::Result<LapSummary> {
         sectors_ms: serde_json::from_str(&sectors).unwrap_or_default(),
         fuel_used_pct: r.get(7)?,
         max_speed: r.get(8)?,
+        invalid_reason: r.get(9)?,
     })
 }
 
@@ -138,6 +141,13 @@ impl Db {
              CREATE INDEX IF NOT EXISTS laps_session ON laps(session_id);",
         )
         .map_err(err)?;
+        let has_reason: bool = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('laps') WHERE name = 'invalid_reason'", [], |r| r.get::<_, i64>(0))
+            .map_err(err)?
+            > 0;
+        if !has_reason {
+            conn.execute_batch("ALTER TABLE laps ADD COLUMN invalid_reason TEXT").map_err(err)?;
+        }
         Ok(Db { conn })
     }
 
@@ -212,8 +222,8 @@ impl Db {
     pub fn insert_lap(&self, session_id: i64, lap: &CompletedLap) -> Result<i64> {
         self.conn
             .execute(
-                "INSERT INTO laps (session_id, lap_no, time_ms, is_pit, is_valid, sectors, fuel_used, max_speed, length_m, samples)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO laps (session_id, lap_no, time_ms, is_pit, is_valid, sectors, fuel_used, max_speed, length_m, samples, invalid_reason)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     session_id,
                     lap.lap_no,
@@ -225,6 +235,7 @@ impl Db {
                     lap.max_speed,
                     lap.length_m,
                     encode(&lap.samples)?,
+                    lap.invalid_reason.map(|r| r.as_str()),
                 ],
             )
             .map_err(err)?;
@@ -312,8 +323,8 @@ impl Db {
                 ),
                 [lap_id],
                 |r| {
-                    let blob: Vec<u8> = r.get(12)?;
-                    Ok((lap_row(r)?, r.get(9)?, r.get(10)?, r.get(11)?, blob))
+                    let blob: Vec<u8> = r.get(13)?;
+                    Ok((lap_row(r)?, r.get(10)?, r.get(11)?, r.get(12)?, blob))
                 },
             )
             .map_err(err)
@@ -338,6 +349,7 @@ mod tests {
             time_ms,
             is_pit: false,
             is_valid: valid,
+            invalid_reason: (!valid).then_some(crate::session::models::InvalidReason::RewindOrReset),
             sectors_ms: vec![1, 2, 3, 4, 5],
             fuel_used_pct: Some(5.0),
             max_speed: 250.0,
@@ -362,6 +374,7 @@ mod tests {
         assert_eq!(sessions[0].lap_count, 2);
         assert_eq!(sessions[0].best_ms, Some(95_000));
         let detail = db.lap_detail(id).unwrap();
+        assert_eq!(detail.summary.invalid_reason.as_deref(), Some("rewind_or_reset"));
         assert_eq!(detail.samples.len(), 50);
         assert_eq!(detail.summary.sectors_ms, vec![1, 2, 3, 4, 5]);
         assert_eq!(db.best_lap_for(t.id, 1234).unwrap().unwrap().0, 95_000);

@@ -8,7 +8,7 @@ The README has the full feature list, the protocol details, and the **phase road
 
 ```bash
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
-cd src-tauri && cargo test        # Rust unit tests (fast, ~12 tests)
+cd src-tauri && cargo test        # Rust unit tests (fast, ~50 tests)
 npx tsc --noEmit                  # type-check the frontend
 npm run build                     # frontend production build
 npm run tauri build -- --bundles app,dmg   # macOS release → src-tauri/target/release/bundle/
@@ -25,11 +25,11 @@ Notes on running and building:
 
 ## Testing without a PlayStation
 
-On the Connect screen, choose **Try demo mode** (the `start_demo` command). This starts `telemetry/sim.rs`, a fake PS on 127.0.0.1. It answers heartbeats with encrypted packets from an 8-lap race on a generated ~3.7 km track.
+On the Connect screen, choose **Try demo mode** (the `start_demo` command). This starts `telemetry/sim.rs`, a fake PS on 127.0.0.1. It answers heartbeats with encrypted packets from a 10-lap race on a generated ~3.7 km track.
 
-The demo race includes a grid start, fuel burn, a pit stop, and tyre temperatures. Use it to check dashboard, recording, analysis and voice changes from start to finish.
+The demo race includes a grid start, fuel burn, tyre wear (pace fades about 0.8% a lap), wheelspin and lock-ups, a pit stop, and a spin on lap 8. Use it to check dashboard, recording, analysis and voice changes from start to finish.
 
-The sim test in `sim.rs` also exercises the engine headlessly.
+The sim tests in `sim.rs` also run the engine and engineer headlessly. `cargo test simulated_race_engineer -- --nocapture` prints the full Crew Chief transcript for a race, which is the quickest way to judge a callout change.
 
 ## Architecture
 
@@ -38,10 +38,17 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   ├ crypto.rs      Salsa20 decrypt; variant by size (A 296 B / B 316 B / ~ 344 B)
   ├ packet.rs      Packet::parse (+ to_bytes for the sim). Offsets verified on a real PS5.
   └ Handler (lib.rs LiveHandler) per packet:
-       session/engine.rs  → LiveState + EngineEvents (SessionStarted/Ended, RaceStart, LapCompleted, PositionChanged)
+       session/engine.rs  → LiveState + EngineEvents (SessionStarted/Ended, RaceStart, LapCompleted,
+                            SectorCompleted, LapInvalidated, Incident, PositionChanged)
+         ├ fuel.rs        FuelModel (+ fuel-off detection) → RaceStrategy (window, stops, target)
+         ├ tyres.rs       TyreModel → TyreEstimate (lap-time trend, fuel-corrected)
+         ├ strategy.rs    fuel + tyres → PitPlan
+         └ incidents.rs   SpinDetector
        storage/mod.rs     → SQLite (tracks, sessions, laps; samples = zstd(bincode(Vec<Sample>)))
-       engineer/rules.rs  → Callouts → engineer/voice.rs (piper CLI → cached WAV → rodio)
-       emits Tauri events: "telemetry" (LiveState, 30 Hz), "connection", "lap", "engineer", "voice_error"
+       engineer/rules.rs  → candidate Calls (+ live.rs: tyre temps, wheel slip)
+         → director.rs    chatter level, category toggle, anti-nag cooldown, routine gap, calm-moment hold
+         → voice.rs       priority queue (High clears Low) → piper CLI → cached WAV → rodio
+       emits Tauri events: "telemetry" (LiveState, 30 Hz), "connection", "lap", "lap_invalid", "engineer", "voice_error"
 ```
 
 ### Backend (Rust) rules
@@ -49,7 +56,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - **Lap timing:**
   - The current lap time comes from `packet_id` ticks (60 Hz).
   - A finished lap uses the game's `last_lap_ms`. Sample `t` values are rescaled to match it.
-  - A lap counts as valid when `!pit && seen_start && !teleport`.
+  - A lap is invalid only with an `InvalidReason` (joined mid-lap, rewind/reset, confirmed telemetry jump, too short, pit lap). A position jump has to be impossible over the real elapsed time (packet-id gap) *and* confirmed by 3 packets. Stale or reordered packets are dropped. Don't loosen this back to single-packet checks; it made real laps "not count".
 - **Track identity** is a fingerprint of start/finish position plus lap length (GT7 sends no track ID). See `Db::identify_track`.
 - **Settings** (`settings.rs`) are JSON in the app config dir, held in `Arc<RwLock<Settings>>`.
 - **Adding a setting:**
@@ -61,10 +68,11 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   3. Add a typed wrapper in `src/lib/api.ts` (`api.*`).
 - Serde uses `rename_all = "camelCase"` for everything sent to the UI.
 - **Adding a callout:**
-  1. Add a rule in `engineer/rules.rs` and debounce it, using a cooldown or edge detection like the existing rules.
-  2. Put it under a `Callouts` toggle in `settings.rs`.
-  3. Add the matching row to `CALLOUTS` in `src/views/Settings.tsx`.
-  4. Write the text the way it should be spoken: `speak_time()` gives "1 34 point 7", not "1:34.7".
+  1. Emit a `Call` from `engineer/rules.rs` (events) or `engineer/live.rs` (60 Hz state). Give it a `Topic`, the lowest `ChatterLevel` that should hear it, a priority, a fact `key` and a cooldown. Speak on changes of state, not on a timer.
+  2. The `Topic` maps to a `Callouts` toggle in `settings.rs`. For a new category, add the toggle there, in `src/lib/api.ts`, and as a row in `CALLOUTS` in `src/views/Settings.tsx`.
+  3. Use `Phrases::pick` for wordings that repeat. Vary the words only, never the facts.
+  4. Write the text the way it should be spoken: `speak_time()` gives "1 34 point 7", not "1:34.7". Use `speak_gap`, `speak_laps`, and `word()` for sector numbers.
+  5. Check it in the demo transcript test.
 
 ### Frontend (React) rules
 - **Navigation** is a simple view state in the Zustand store (`src/lib/store.ts`, `go({ name: ... })`), not a router.
@@ -89,7 +97,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 ## GT7 facts that shape the design
 - GT7 doesn't send:
   - a track ID or car name (only `car_code`)
-  - race position during the race (only `pre_race_position` on the grid)
+  - race position during the race (only `pre_race_position` on the grid), or any data on other cars. Don't announce position changes until a reliable source exists.
   - tyre wear
   - the current lap time
 - `gear` 0 = reverse. If the `IN_GEAR` flag is clear, show N. `suggested_gear` 15 = none.

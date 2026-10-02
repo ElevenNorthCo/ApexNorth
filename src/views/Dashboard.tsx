@@ -285,9 +285,23 @@ const PIT_LABEL: Partial<Record<PitWindow, [string, string]>> = {
   box_now: ["BOX THIS LAP", "#dc2626"],
 };
 
+/** Pit badge text, colour, and whether it should blink. */
+function pitBadge(l: LiveState | null): [string, string, boolean] | undefined {
+  const s = l?.strategy;
+  if (!l || !s) return undefined;
+  const plan = l.pitPlan;
+  if (s.window === "box_now" || (plan && l.lap != null && plan.lap <= l.lap)) return ["BOX THIS LAP", "#dc2626", true];
+  if (s.stopsRequired > 0 && s.earliestPitLap != null && s.latestPitLap != null) {
+    const target = plan?.lap ?? s.targetPitLap;
+    return [`PIT L${s.earliestPitLap}–${s.latestPitLap} · TARGET L${target}`, s.window === "open" ? "#16a34a" : "#6b7280", false];
+  }
+  const label = l.pitWindow ? PIT_LABEL[l.pitWindow] : undefined;
+  return label && [label[0], label[1], false];
+}
+
 function Fuel({ l }: { l: LiveState | null }) {
   const pct = (v: number | null | undefined, digits = 0) => (v == null ? DASH : v.toFixed(digits));
-  const pit = l?.pitWindow ? PIT_LABEL[l.pitWindow] : undefined;
+  const pit = pitBadge(l);
   const col = (value: string, unit: string, label: string, x: number) => (
     <div className="absolute w-[110px] text-center" style={{ left: x, top: 13 }}>
       <div className="num text-[32px] font-bold leading-none">
@@ -304,7 +318,7 @@ function Fuel({ l }: { l: LiveState | null }) {
       {col(pct(l?.fuelLapsLeft, 1), "", "LAPS LEFT", 258)}
       {pit && (
         <div
-          className={`num absolute -bottom-[10px] right-[14px] rounded-[4px] px-[6px] text-[11px] font-bold ${l?.pitWindow === "box_now" ? "blink" : ""}`}
+          className={`num absolute -bottom-[10px] right-[14px] rounded-[4px] px-[6px] text-[11px] font-bold ${pit[2] ? "blink" : ""}`}
           style={{ background: pit[1] }}
         >
           {pit[0]}

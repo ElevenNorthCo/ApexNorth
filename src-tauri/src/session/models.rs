@@ -28,6 +28,34 @@ pub struct Sample {
 
 pub const SECTOR_COUNT: usize = 5;
 
+/// Why a lap doesn't count. Only set on strong evidence, so a single bad
+/// packet can't throw away a real lap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvalidReason {
+    /// Timing started part-way through the lap.
+    JoinedMidLap,
+    /// The car was moved back or reset (rewind, restart, return to track).
+    RewindOrReset,
+    /// A confirmed, impossible position jump with no pause around it.
+    TelemetryJump,
+    /// The lap was much shorter than the track.
+    InsufficientDistance,
+    PitLap,
+}
+
+impl InvalidReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InvalidReason::JoinedMidLap => "joined_mid_lap",
+            InvalidReason::RewindOrReset => "rewind_or_reset",
+            InvalidReason::TelemetryJump => "telemetry_jump",
+            InvalidReason::InsufficientDistance => "insufficient_distance",
+            InvalidReason::PitLap => "pit_lap",
+        }
+    }
+}
+
 /// A finished lap produced by the engine.
 #[derive(Debug, Clone)]
 pub struct CompletedLap {
@@ -35,6 +63,7 @@ pub struct CompletedLap {
     pub time_ms: u32,
     pub is_pit: bool,
     pub is_valid: bool,
+    pub invalid_reason: Option<InvalidReason>,
     pub sectors_ms: Vec<u32>,
     pub fuel_used_pct: Option<f32>,
     pub max_speed: f32,

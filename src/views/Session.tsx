@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type LapSummary, type SessionSummary } from "../lib/api";
+import { api, type InvalidReason, type LapSummary, type SessionSummary } from "../lib/api";
+
+const INVALID_WHY: Record<InvalidReason, string> = {
+  joined_mid_lap: "Timing joined part-way through the lap",
+  rewind_or_reset: "Rewind or reset detected",
+  telemetry_jump: "The car jumped position (confirmed over several packets)",
+  insufficient_distance: "Lap was much shorter than the track",
+  pit_lap: "Pit lap",
+};
 import { carName, lapTime, shortDate, split, timeOfDay } from "../lib/format";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
@@ -121,7 +129,9 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                     {l.isPit ? (
                       <span className="rounded bg-amber-500/20 px-2 py-0.5 text-amber-300">PIT</span>
                     ) : !l.isValid ? (
-                      <span className="rounded bg-white/10 px-2 py-0.5 text-white/50">INVALID</span>
+                      <span className="rounded bg-white/10 px-2 py-0.5 text-white/50" title={l.invalidReason ? INVALID_WHY[l.invalidReason] : undefined}>
+                        INVALID
+                      </span>
                     ) : best?.id === l.id ? (
                       <span className="rounded bg-purple-500/25 px-2 py-0.5 text-purple-300">BEST</span>
                     ) : null}

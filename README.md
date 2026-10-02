@@ -73,17 +73,34 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 - Sector filter (All, or S1–S5) zooms both the charts and the map.
 
 ### Race engineer voice
-Callouts are spoken offline with Piper, debounced so the engineer never nags. Each category can be turned on or off:
+Callouts are spoken offline with Piper. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
+
+**Engineer chatter** sets how often it talks: *Minimal* (critical information only), *Normal*, *Chatty* or *Crew Chief*. **Callout categories** set what it talks about, and a category that's off stays off at every chatter level.
 
 | Category | Example |
 |---|---|
-| Lap times | "1 34 point 7. Three tenths off your best." / "Purple lap!" / "Final lap." |
-| Fuel | "Fuel for 4 laps." / "Fuel is critical." |
-| Pit window | "Pit window is open." / "Box, box. Box this lap." |
-| Tyres | "Fronts are overheating. Look after the tyres." |
-| Wheelspin / lock-ups | "You're locking the fronts. Ease the brake pressure." |
+| Lap times | "1 34 point 7. Three tenths off your best." / "Purple lap! New personal best by four tenths." / "Final lap." |
+| Sector coaching | "Sector one, two tenths up." / "Purple sector." / "You lost three tenths there." |
+| Pace & encouragement | "Good pace. Keep it up." / "That's good consistency." / "Good recovery. You made most of that time back." |
+| Fuel | "Fuel usage is 9.6 percent per lap. One stop expected." / "Fuel for about six laps." / "Fuel is critical." |
+| Pit strategy | "Pit window laps 5 to 7. Lap 6 is the target." / "Fuel usage has increased. Target stop is now lap 5." / "Box this lap." |
+| Tyres | "Rear tyres are getting hot." / "Front-left is running hotter than the others." / "Tyre performance is starting to drop." |
+| Wheelspin & lock-ups | "Wheelspin on exit." / "You're consistently locking the fronts. Ease the brake pressure." |
+| Incidents | "You've had a spin." / "Take it easy for the next couple of corners." |
 | Race start | "Lights out. Go, go, go!" |
 | Grid position | "You start P5 of 16." |
+
+How it stays useful rather than noisy:
+- **Anti-nag memory:** each fact is remembered when spoken. It isn't repeated unless it gets worse, changes, or enough time has passed.
+- **Priorities:** box calls, critical fuel, overheating and spins speak immediately and clear queued chatter.
+- **Context timing:** routine calls wait (briefly) for a straight, not mid-braking or mid-corner.
+- **Phrase variation:** common calls rotate between equivalent wordings. Facts and numbers never change.
+
+### Strategy engine
+- **Fuel:** a rolling average that reacts quickly to a real change in consumption. Strategy switches off automatically when the game isn't burning fuel (time trials), so you never hear "hundreds of laps of fuel".
+- **Pit window:** earliest, target and latest pit lap, plus the number of stops, from the current fuel, burn rate, full-tank range, laps remaining and a 0.3-lap reserve.
+- **Tyre degradation (estimated):** GT7 sends no wear data, so ApexNorth reads the stint's lap-time trend, corrected for the car getting lighter as fuel burns. It reports *Fresh / Stable / Declining / Poor / Critical*, a loss per lap, a lap where pace is expected to drop off, and a confidence. It never claims a wear percentage.
+- **Combined plan:** when the tyre estimate is confident, it can bring the stop forward ("Fuel can make lap 7, but tyre degradation favors stopping on lap 6"). Otherwise fuel decides.
 
 ---
 
@@ -150,17 +167,22 @@ PS5/PS4 ──UDP 33740──▶ telemetry/udp.rs   heartbeat + discovery + rece
                          ├─▶ crypto.rs     Salsa20 decrypt, packet-variant detection
                          ├─▶ packet.rs     parse into a typed Packet
                          ▼
-                       session/engine.rs   lap detection, timing, delta, sectors,
-                         │                 pit detection, fuel model, G-forces
+                       session/engine.rs   lap detection, timing, delta, live sectors,
+                         │                 lap validity, pit detection, G-forces
+                         ├─ fuel.rs / tyres.rs / strategy.rs / incidents.rs
                          ├─▶ "telemetry" event (30 Hz) ─────▶ React dashboard
                          ├─▶ storage (SQLite + zstd lap blobs) ◀─ Activity / Lap Analysis
-                         └─▶ engineer/rules.rs ─▶ voice.rs (Piper CLI → WAV cache → rodio)
+                         └─▶ engineer/rules.rs   what to say (structured calls)
+                               └─ director.rs    chatter level, toggles, anti-nag, timing
+                                    └─ voice.rs  Piper CLI → WAV cache → rodio
 ```
 
 - All the heavy work happens in Rust: decrypting, lap logic, recording and callouts. The UI only renders.
 - **Lap timing:** GT7 sends no running lap time, so the current lap time comes from packet IDs (60 per second, so dropped packets are handled). The completed lap uses the game's official time, and the recorded samples are rescaled to match it.
 - **Delta:** the elapsed time is compared with the reference lap's time at the same distance. The reference is your best lap in this session, or your stored best for this track and car.
-- **Pit window:** this is based on the rolling 3-lap average fuel use and the laps remaining. The states are *No stop*, *Closed*, *Open* and *Box now*.
+- **Lap validity:** a lap is only thrown out on strong evidence. A single bad packet, a Wi-Fi dropout or a late packet is ignored. A position jump only counts once several packets agree the car really moved, and it's impossible over the real elapsed time. The reason is saved with the lap (hover *INVALID* in the session table).
+- **Sectors:** five equal-distance sectors of the reference lap. Each one fires a live event with the sector time, the delta to the best sector and to the reference, and the running lap delta. A standing-start lap is never used as a sector benchmark.
+- **Pit window:** the states are *No stop*, *Closed*, *Open* and *Box now*. The dashboard shows the window and target lap.
 - **Storage:** data lives in your OS app-data folder (`apexnorth.db`). Settings live in the app config folder (`settings.json`).
 
 ---
@@ -195,11 +217,17 @@ src-tauri/src/
     sim.rs               demo-mode PlayStation simulator
   session/
     engine.rs            lap engine and live state
-    fuel.rs              fuel model and pit window
-    models.rs            Sample, CompletedLap, sector math
+    fuel.rs              fuel model, fuel-off detection, pit window strategy
+    tyres.rs             estimated tyre degradation
+    strategy.rs          fuel + tyre pit plan
+    incidents.rs         spin detection
+    models.rs            Sample, CompletedLap, InvalidReason, sector math
   storage/mod.rs         SQLite: tracks, sessions, laps
   engineer/
-    rules.rs             callout rules and debouncing
+    rules.rs             decision layer: events → candidate calls
+    live.rs              tyre temperature and wheel-slip watchers
+    director.rs          chatter level, toggles, anti-nag, context timing
+    phrases.rs           phrase variation, spoken numbers
     voice.rs             Piper synthesis, WAV cache, playback queue
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
@@ -220,13 +248,15 @@ npx tsc --noEmit            # type-check the frontend
 The tests cover:
 - crypto round-trips for all three packet variants
 - packet parsing
-- lap engine timing, sectors and fuel
-- a full simulated race, including a pit stop
+- lap engine timing, live sectors, and lap validity (spikes, dropouts, late packets, real resets)
+- a full simulated race through the engine and engineer, at every chatter level
 - SQLite storage
-- the fuel and pit window logic
+- fuel strategy: fuel off, no stop, one stop, multi-stop, the window moving, box now
+- tyre degradation, spin detection and the combined pit plan
+- chatter levels, category toggles, cooldowns and priority
 - spoken time formatting
 
-**Demo mode** (Connect, then *Try demo mode*) starts a fake PlayStation on `127.0.0.1`. It answers heartbeats with encrypted packets from a lap simulation that includes a standing start, a speed profile, fuel burn, tyre temperatures and a pit stop. This tests the full pipeline end to end.
+**Demo mode** (Connect, then *Try demo mode*) starts a fake PlayStation on `127.0.0.1`. It answers heartbeats with encrypted packets from a 10-lap race simulation with a standing start, a speed profile, fuel burn, tyre wear and temperatures, wheelspin and lock-ups, a pit stop, and a spin on lap 8. This tests the full pipeline end to end.
 
 ---
 
@@ -255,6 +285,21 @@ The tests cover:
 - [x] Per-category toggles, volume, speaking speed, test button, and voice errors shown in the UI
 - [x] **Milestone:** engineer callouts working live on track ✔
 
+### ✅ Phase 3.5: Dynamic race engineer & strategy
+- [x] Lap validity rebuilt: reasons per lap, no more real laps thrown out by a single bad packet or dropout
+- [x] Live sector events and sector coaching with thresholds
+- [x] Pace and encouragement backed by timing data
+- [x] Chatter levels (Minimal / Normal / Chatty / Crew Chief) on top of per-category toggles
+- [x] Severity-based wheelspin and lock-up calls
+- [x] Spin detection from heading vs. direction of travel
+- [x] Tyre temperature states, imbalance, rate of rise and post-incident recovery
+- [x] Fuel strategy: rolling burn, stops required, earliest / target / latest pit lap, fuel-off detection
+- [x] Estimated tyre degradation, combined with fuel for the pit plan
+- [x] Context-aware timing, priorities, anti-nag memory and phrase variation
+- [x] Late-lap "box this lap" reminder
+- [x] Live race position investigated: GT7's packet has no live position or data on other cars, so position calls stay grid-only
+- [ ] **Milestone:** a full live race where the engineer feels involved without being annoying
+
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
 - [ ] Bundle Piper and a default voice as a Tauri sidecar
@@ -282,8 +327,9 @@ The tests cover:
 ## Known limitations
 - **Tracks:** GT7 doesn't report a track ID. Tracks are recognised by their start/finish position and length, and named "Track N (x.xx km)" until you rename them.
 - **Cars** show as `Car #<code>` until the car database lands (Phase 4).
-- **Position:** GT7 only sends grid position before the race, so POS shows the starting slot.
-- **Tyre wear:** GT7 sends no tyre wear data. Tyre calls use temperature and wheel slip.
+- **Position:** GT7 only sends grid position before the race, so POS shows the starting slot. The packet carries no live position and no data on other cars, so ApexNorth won't announce overtakes until a reliable source exists.
+- **Tyre wear:** GT7 sends no tyre wear data. Degradation is estimated from the lap-time trend and stated with honest language, never as a percentage.
+- **Pit entry:** track layouts differ and GT7 doesn't say where the pit lane is, so the "box this lap" reminder comes at about 75–90% of the lap.
 - **Voice latency:** the Python Piper CLI loads the model for each new phrase. This will be fixed in Phase 4.
 
 ---

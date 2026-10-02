@@ -1,21 +1,51 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// How much the engineer talks. Category toggles still decide what about.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChatterLevel {
+    /// Critical information only.
+    Minimal,
+    /// Useful race updates without excessive chatter.
+    #[default]
+    Normal,
+    /// Frequent coaching and strategy updates.
+    Chatty,
+    /// Maximum useful race-engineer feedback.
+    CrewChief,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Callouts {
     pub lap_times: bool,
+    pub sectors: bool,
+    pub pace: bool,
     pub fuel: bool,
-    pub pit_window: bool,
+    #[serde(alias = "pitWindow")]
+    pub pit_strategy: bool,
     pub tyres: bool,
     pub wheel_slip: bool,
+    pub incidents: bool,
     pub race_start: bool,
     pub position: bool,
 }
 
 impl Default for Callouts {
     fn default() -> Self {
-        Callouts { lap_times: true, fuel: true, pit_window: true, tyres: true, wheel_slip: true, race_start: true, position: true }
+        Callouts {
+            lap_times: true,
+            sectors: true,
+            pace: true,
+            fuel: true,
+            pit_strategy: true,
+            tyres: true,
+            wheel_slip: true,
+            incidents: true,
+            race_start: true,
+            position: true,
+        }
     }
 }
 
@@ -29,6 +59,7 @@ pub struct VoiceSettings {
     pub volume: f32,
     /// Piper `--length-scale`: < 1 speaks faster.
     pub length_scale: f32,
+    pub chatter: ChatterLevel,
     pub callouts: Callouts,
 }
 
@@ -40,6 +71,7 @@ impl Default for VoiceSettings {
             model_path: String::new(),
             volume: 0.9,
             length_scale: 0.9,
+            chatter: ChatterLevel::default(),
             callouts: Callouts::default(),
         }
     }
@@ -113,4 +145,19 @@ pub fn find_voices(extra_dirs: &[PathBuf]) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_still_load() {
+        let v: VoiceSettings = serde_json::from_str(r#"{"callouts": {"pitWindow": false, "fuel": false}}"#).unwrap();
+        assert!(!v.callouts.pit_strategy && !v.callouts.fuel);
+        assert!(v.callouts.sectors && v.callouts.incidents);
+        assert_eq!(v.chatter, ChatterLevel::Normal);
+        let c: VoiceSettings = serde_json::from_str(r#"{"chatter": "crewChief"}"#).unwrap();
+        assert_eq!(c.chatter, ChatterLevel::CrewChief);
+    }
 }

@@ -14,7 +14,7 @@ use super::packet::{flags, Packet};
 use super::udp::SEND_PORT;
 
 const DT: f32 = 1.0 / 60.0;
-const RACE_LAPS: i16 = 8;
+const RACE_LAPS: i16 = 10;
 const CAR_CODE: i32 = 3442;
 const GEAR_TOP_KPH: [f32; 7] = [0.0, 75.0, 115.0, 155.0, 195.0, 240.0, 300.0];
 
@@ -118,6 +118,16 @@ struct Car {
     pit_stop_ticks: u32,
     pit_this_lap: bool,
     tod_ms: i32,
+    /// Laps on this set of tyres: pace fades and temperatures climb.
+    stint_laps: u32,
+    /// Scripted spin: ticks left and heading offset.
+    spin_ticks: u32,
+    spun: bool,
+    yaw_offset: f32,
+    prev_throttle: f32,
+    prev_brake: f32,
+    rear_slip_ticks: u32,
+    front_lock_ticks: u32,
 }
 
 impl Car {
@@ -134,11 +144,19 @@ impl Car {
             pace: 0.97,
             best: -1,
             last: -1,
-            fuel: 30.0,
+            fuel: 45.0,
             tyre: [45.0; 4],
             pit_stop_ticks: 0,
             pit_this_lap: false,
             tod_ms: 14 * 3_600_000,
+            stint_laps: 0,
+            spin_ticks: 0,
+            spun: false,
+            yaw_offset: 0.0,
+            prev_throttle: 0.0,
+            prev_brake: 0.0,
+            rear_slip_ticks: 0,
+            front_lock_ticks: 0,
         }
     }
 
@@ -150,7 +168,11 @@ impl Car {
         self.grid_ticks = 0;
         self.best = -1;
         self.last = -1;
-        self.fuel = 30.0;
+        self.fuel = 45.0;
+        self.stint_laps = 0;
+        self.spun = false;
+        self.pace = 0.97;
+        self.tyre = [45.0; 4];
     }
 
     fn step(&mut self) -> Packet {
@@ -179,10 +201,30 @@ impl Car {
                     self.pit_this_lap = false;
                     self.pit_stop_ticks = 0;
                     self.s = 60.0;
+                    // Fresh tyres, a little cooler than the old ones.
+                    self.stint_laps = 0;
+                    self.tyre = [62.0; 4];
                 }
             }
             self.lap_ticks += 1;
+        } else if self.spin_ticks > 0 {
+            // A half-second of oversteer and a full rotation, scrubbing speed.
+            self.spin_ticks -= 1;
+            self.yaw_offset += TAU / 90.0;
+            self.v = (self.v - 22.0 * DT).max(6.0);
+            brake = 0.2;
+            self.s += self.v * DT;
+            self.lap_ticks += 1;
+            self.tyre[2] += 0.3;
+            self.tyre[3] += 0.3;
+            if self.spin_ticks == 0 {
+                self.yaw_offset = 0.0;
+            }
         } else {
+            if self.lap == 8 && !self.spun && self.s > 1800.0 {
+                self.spun = true;
+                self.spin_ticks = 90;
+            }
             let target = vprof * self.pace;
             let accel = 7.5 * (1.0 - self.v / 90.0) + 0.8;
             if target > self.v + 0.3 {
@@ -208,8 +250,11 @@ impl Car {
                 }
                 self.lap_ticks = 0;
                 self.lap += 1;
-                self.pace = 0.955 + 0.04 * self.rng.next();
-                self.pit_this_lap = self.fuel < 10.0;
+                self.stint_laps += 1;
+                // Tyre wear costs almost one percent a lap, plus a little noise.
+                self.pace = 0.99 - 0.008 * self.stint_laps as f32 - 0.002 * self.rng.next();
+                // Pit with about two laps of fuel left, like a driver following the plan.
+                self.pit_this_lap = self.fuel < 13.0;
                 if self.lap > RACE_LAPS {
                     self.reset_race();
                 }
@@ -231,15 +276,38 @@ impl Car {
         let load = kph / 300.0 + brake * 0.6;
         for (i, t) in self.tyre.iter_mut().enumerate() {
             let front = if i < 2 { 8.0 } else { 0.0 };
-            let target = 52.0 + 45.0 * load + front;
+            let target = 52.0 + 45.0 * load + front + 2.0 * self.stint_laps as f32;
             *t += (target - *t) * 0.004;
         }
 
+        // Now and then, a big slide on exit or a lock-up into a corner.
+        if throttle > 0.9 && self.prev_throttle < 0.9 && gear <= 3 && self.rng.next() < 0.2 {
+            self.rear_slip_ticks = 30;
+        }
+        if brake > 0.5 && self.prev_brake < 0.1 && self.rng.next() < 0.12 {
+            self.front_lock_ticks = 20;
+        }
+        self.prev_throttle = throttle;
+        self.prev_brake = brake;
+        self.rear_slip_ticks = self.rear_slip_ticks.saturating_sub(1);
+        self.front_lock_ticks = self.front_lock_ticks.saturating_sub(1);
         let radius = 0.33;
-        let rear_slip = if throttle > 0.9 && gear <= 2 { 0.12 } else { 0.02 * throttle };
-        let front_slip = if brake > 0.9 { -0.15 } else { 0.0 };
+        let rear_slip = if self.rear_slip_ticks > 0 && throttle > 0.5 {
+            0.45
+        } else if throttle > 0.9 && gear <= 2 {
+            0.12
+        } else {
+            0.02 * throttle
+        };
+        let front_slip = if self.front_lock_ticks > 0 && brake > 0.3 {
+            -0.5
+        } else if brake > 0.9 {
+            -0.15
+        } else {
+            0.0
+        };
         let wheel = |slip: f32| self.v * (1.0 + slip) / radius;
-        let yaw = tan[0].atan2(tan[1]);
+        let yaw = tan[0].atan2(tan[1]) + self.yaw_offset;
 
         let mut fl = flags::CAR_ON_TRACK | flags::IN_GEAR;
         if rpm > 8200.0 {
@@ -249,6 +317,7 @@ impl Car {
             position: [pos[0], 0.0, pos[1]],
             velocity: [tan[0] * self.v, 0.0, tan[1] * self.v],
             rotation: [0.0, (yaw / 2.0).sin(), 0.0, (yaw / 2.0).cos()],
+            angular_velocity: [0.0, if self.spin_ticks > 0 { TAU / 1.5 } else { 0.0 }, 0.0],
             rpm,
             fuel: self.fuel,
             fuel_capacity: 100.0,
@@ -366,5 +435,55 @@ mod tests {
         assert!(len > 3000.0 && len < 6000.0, "lap length {len}");
         assert!(laps.iter().any(|l| l.is_pit), "expected a pit stop");
         assert!(laps.iter().filter(|l| l.is_valid).count() >= 5);
+    }
+
+    /// Run a whole demo race through the engine and engineer and return what
+    /// gets said, with the lap it was said on.
+    fn transcript(level: crate::settings::ChatterLevel) -> Vec<(i16, String)> {
+        use crate::engineer::director::EngineerConfig;
+        use crate::engineer::rules::Engineer;
+        let cfg = EngineerConfig { chatter: level, callouts: Default::default() };
+        let mut car = Car::new();
+        let mut engine = Engine::new();
+        let mut eng = Engineer::new();
+        let t0 = Instant::now();
+        let mut said = vec![];
+        let mut laps = 0;
+        for tick in 0..60 * 60 * 25 {
+            let now = t0 + Duration::from_secs_f64(tick as f64 / 60.0);
+            let p = car.step();
+            for e in engine.on_packet(&p) {
+                if matches!(e, EngineEvent::LapCompleted(..)) {
+                    laps += 1;
+                }
+                said.extend(eng.on_event(&e, &cfg, now).into_iter().map(|c| (p.lap, c.text)));
+            }
+            said.extend(eng.on_live(engine.live(), &cfg, now).into_iter().map(|c| (p.lap, c.text)));
+            if laps >= RACE_LAPS {
+                break;
+            }
+        }
+        said
+    }
+
+    #[test]
+    fn simulated_race_engineer_transcript() {
+        use crate::settings::ChatterLevel;
+        let crew = transcript(ChatterLevel::CrewChief);
+        let normal = transcript(ChatterLevel::Normal);
+        let minimal = transcript(ChatterLevel::Minimal);
+        for (l, t) in &crew {
+            println!("L{l}  {t}");
+        }
+        println!("crew chief {} / normal {} / minimal {} calls", crew.len(), normal.len(), minimal.len());
+        let has = |v: &[(i16, String)], s: &str| v.iter().any(|(_, t)| t.contains(s));
+        assert!(has(&crew, "Lights out"));
+        assert!(has(&crew, "spin"), "spin detected");
+        assert!(has(&crew, "Fuel usage is"));
+        assert!(has(&crew, "Sector"));
+        assert!(has(&crew, "Box"));
+        assert!(!has(&crew, "won't count"), "no demo lap should be thrown out");
+        assert!(crew.len() > normal.len() && normal.len() > minimal.len());
+        assert!(!has(&minimal, "Sector"));
     }
 }

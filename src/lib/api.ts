@@ -3,6 +3,38 @@ import { invoke } from "@tauri-apps/api/core";
 export type ConnState = "idle" | "searching" | "connecting" | "live" | "lost" | "error";
 export type Variant = "A" | "B" | "Tilde";
 export type PitWindow = "none" | "no_stop" | "closed" | "open" | "box_now";
+export type FuelState = "unknown" | "active" | "inactive";
+export type InvalidReason = "joined_mid_lap" | "rewind_or_reset" | "telemetry_jump" | "insufficient_distance" | "pit_lap";
+export type TyrePerformance = "fresh" | "stable" | "declining" | "poor" | "critical";
+export type ChatterLevel = "minimal" | "normal" | "chatty" | "crewChief";
+
+export interface RaceStrategy {
+  fuelPerLapPct: number;
+  fuelLapsRemaining: number;
+  fuelRequiredToFinishPct: number | null;
+  stopsRequired: number;
+  earliestPitLap: number | null;
+  targetPitLap: number | null;
+  latestPitLap: number | null;
+  projectedFinishFuelPct: number | null;
+  fuelMarginLaps: number | null;
+  window: PitWindow;
+}
+
+export interface PitPlan {
+  lap: number;
+  driver: "fuel" | "tyres" | "both";
+  fuelTarget: number;
+  fuelLatest: number;
+}
+
+export interface TyreEstimate {
+  performance: TyrePerformance;
+  estimatedLossPerLapMs: number | null;
+  projectedProblemLap: number | null;
+  confidence: number;
+  stintLaps: number;
+}
 
 export interface ConnStatus {
   state: ConnState;
@@ -34,11 +66,17 @@ export interface LiveState {
   bestLapMs: number | null;
   deltaMs: number | null;
   lapDistance: number;
+  lapFraction: number | null;
+  lapInvalid: InvalidReason | null;
   fuelPct: number | null;
   fuelPerLapPct: number | null;
   fuelLapsLeft: number | null;
+  fuelState: FuelState;
   lapsRemaining: number | null;
   pitWindow: PitWindow | null;
+  strategy: RaceStrategy | null;
+  pitPlan: PitPlan | null;
+  tyreEstimate: TyreEstimate;
   gLat: number;
   gLon: number;
   boost: number;
@@ -71,6 +109,7 @@ export interface LapSummary {
   timeMs: number;
   isPit: boolean;
   isValid: boolean;
+  invalidReason: InvalidReason | null;
   sectorsMs: number[];
   fuelUsedPct: number | null;
   maxSpeed: number;
@@ -102,10 +141,13 @@ export interface LapDetail extends LapSummary {
 
 export interface Callouts {
   lapTimes: boolean;
+  sectors: boolean;
+  pace: boolean;
   fuel: boolean;
-  pitWindow: boolean;
+  pitStrategy: boolean;
   tyres: boolean;
   wheelSlip: boolean;
+  incidents: boolean;
   raceStart: boolean;
   position: boolean;
 }
@@ -120,6 +162,7 @@ export interface Settings {
     modelPath: string;
     volume: number;
     lengthScale: number;
+    chatter: ChatterLevel;
     callouts: Callouts;
   };
 }

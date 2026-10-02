@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use engineer::director::EngineerConfig;
 use engineer::rules::Engineer;
 use engineer::voice::{self, Callout, Priority, Voice};
 use session::engine::{Engine, EngineEvent, RefLap};
@@ -41,6 +42,13 @@ struct LapEvent {
     session_id: i64,
     lap: LapSummary,
     track_name: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LapInvalid {
+    lap_no: i16,
+    reason: &'static str,
 }
 
 /// Receives packets on the link thread: runs the engine, records laps,
@@ -96,7 +104,7 @@ impl LiveHandler {
             if let Ok(t) = db.identify_track(lap.start_pos, lap.length_m, &lap.samples) {
                 let _ = db.set_session_track(session_id, t.id);
                 if let Ok(Some((time_ms, samples))) = db.best_lap_for(t.id, ctx.car_code) {
-                    self.engine.set_reference(RefLap { time_ms, samples });
+                    self.engine.set_reference(RefLap { time_ms, samples, standing_start: false });
                 }
                 ctx.track = Some((t.id, t.name));
             }
@@ -110,6 +118,7 @@ impl LiveHandler {
                     time_ms: lap.time_ms as i64,
                     is_pit: lap.is_pit,
                     is_valid: lap.is_valid,
+                    invalid_reason: lap.invalid_reason.map(|r| r.as_str().to_string()),
                     sectors_ms: lap.sectors_ms.clone(),
                     fuel_used_pct: lap.fuel_used_pct.map(|f| f as f64),
                     max_speed: lap.max_speed as f64,
@@ -126,7 +135,11 @@ impl LiveHandler {
 
 impl Handler for LiveHandler {
     fn packet(&mut self, p: Packet) {
-        let callouts_cfg = self.settings.read().voice.callouts.clone();
+        let cfg = {
+            let s = self.settings.read();
+            EngineerConfig { chatter: s.voice.chatter, callouts: s.voice.callouts.clone() }
+        };
+        let now = Instant::now();
         for ev in self.engine.on_packet(&p) {
             match &ev {
                 EngineEvent::SessionStarted { car_code, total_laps } => {
@@ -140,12 +153,15 @@ impl Handler for LiveHandler {
                 }
                 EngineEvent::SessionEnded => self.session = None,
                 EngineEvent::LapCompleted(lap, _) => self.record_lap(lap),
+                EngineEvent::LapInvalidated { lap_no, reason } => {
+                    let _ = self.app.emit("lap_invalid", LapInvalid { lap_no: *lap_no, reason: reason.as_str() });
+                }
                 _ => {}
             }
-            let c = self.engineer.on_event(&ev, &callouts_cfg);
+            let c = self.engineer.on_event(&ev, &cfg, now);
             self.speak(c);
         }
-        let c = self.engineer.on_live(self.engine.live(), &callouts_cfg);
+        let c = self.engineer.on_live(self.engine.live(), &cfg, now);
         self.speak(c);
 
         if self.last_emit.elapsed() >= FRAME_INTERVAL {

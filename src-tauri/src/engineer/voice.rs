@@ -115,6 +115,20 @@ pub fn synthesize(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<Pat
     Ok(out)
 }
 
+/// Queue a callout. Urgent news clears queued chatter, duplicates are
+/// dropped, and routine calls don't pile up behind a backlog.
+fn enqueue(queue: &mut Vec<Callout>, c: Callout) {
+    if queue.iter().any(|q| q.text == c.text) {
+        return;
+    }
+    match c.priority {
+        Priority::High => queue.retain(|q| q.priority != Priority::Low),
+        Priority::Low if queue.len() >= 2 => return,
+        _ => {}
+    }
+    queue.push(c);
+}
+
 fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on_error: impl Fn(String)) {
     // The audio device is opened lazily and kept for the life of the thread.
     let mut audio: Option<(rodio::OutputStream, rodio::OutputStreamHandle)> = None;
@@ -134,11 +148,11 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on
                 continue;
             }
             Some(Msg::Say(c)) => {
-                queue.push(c);
+                enqueue(&mut queue, c);
                 // Drain anything else waiting so priorities apply.
                 while let Ok(m) = rx.try_recv() {
                     match m {
-                        Msg::Say(c) => queue.push(c),
+                        Msg::Say(c) => enqueue(&mut queue, c),
                         Msg::Configure(s) => settings = s,
                     }
                 }
@@ -184,4 +198,22 @@ fn play(handle: &rodio::OutputStreamHandle, wav: &Path, volume: f32) -> Result<(
     sink.append(source);
     sink.sleep_until_end();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn high_priority_supersedes_chatter() {
+        let mut q = vec![];
+        enqueue(&mut q, Callout::new(Priority::Low, "Nice rhythm."));
+        enqueue(&mut q, Callout::new(Priority::Normal, "Sector two, 4 tenths up."));
+        enqueue(&mut q, Callout::new(Priority::Normal, "Sector two, 4 tenths up."));
+        assert_eq!(q.len(), 2);
+        enqueue(&mut q, Callout::new(Priority::High, "Box, box. Box this lap."));
+        assert_eq!(q.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["Sector two, 4 tenths up.", "Box, box. Box this lap."]);
+        enqueue(&mut q, Callout::new(Priority::Low, "Good pace."));
+        assert_eq!(q.len(), 2, "routine call dropped behind a backlog");
+    }
 }
