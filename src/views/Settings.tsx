@@ -5,7 +5,6 @@ import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
 import { Brand } from "../components/Brand";
-import { trackPhotoStats } from "../lib/media";
 
 const CALLOUTS: { key: keyof Callouts; label: string; hint: string }[] = [
   { key: "lapTimes", label: "Lap times", hint: "Every lap, personal bests and the final lap" },
@@ -175,12 +174,6 @@ export function SettingsView() {
               />
             </Row>
           ))}
-        </Section>
-
-        <Section title="Track artwork" color="var(--color-accent)">
-          <Row label="Track photos" hint="One preview per venue, shared across its layouts">
-            <span className="num text-[15px] text-accent">{trackPhotoStats.added}/{trackPhotoStats.expected}</span>
-          </Row>
         </Section>
 
         <div className="mt-10 flex flex-col items-center gap-2 opacity-60">

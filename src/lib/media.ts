@@ -15,27 +15,6 @@ const byBase = (files: Record<string, string>) =>
   Object.fromEntries(Object.entries(files).map(([path, url]) => [path.split("/").pop()!.replace(/\.\w+$/, ""), url]));
 const TRACK_IMAGES = byBase(trackFiles);
 
-// One expected photo per venue, regardless of how many layouts it has.
-const TRACK_PHOTO_SLUGS = [
-  "mount-panorama-circuit", "red-bull-ring", "circuit-de-spa-francorchamps",
-  "autodromo-de-interlagos", "circuit-gilles-villeneuve", "lake-louise", "dragon-trail",
-  "24-heures-du-mans-racing-circuit", "alsace", "circuit-de-sainte-croix", "nurburgring",
-  "autodrome-lago-maggiore", "autodromo-nazionale-monza", "sardegna-road-track", "sardegna-windmills",
-  "autopolis", "broad-bean-raceway", "fuji-international-speedway", "high-speed-ring",
-  "kyoto-driving-park", "suzuka-circuit", "tokyo-expressway", "tsukuba-circuit",
-  "circuit-de-barcelona-catalunya", "deep-forest-raceway", "eiger-nordwand", "yas-marina-circuit",
-  "brands-hatch", "goodwood", "blue-moon-bay-speedway", "colorado-springs",
-  "daytona-international-speedway", "fishermans-ranch", "grand-valley-highway-1",
-  "michelin-raceway-road-atlanta", "northern-isle-speedway", "special-stage-route-x",
-  "trial-mountain-circuit", "watkins-glen-international", "weathertech-raceway-laguna-seca",
-  "willow-springs-international-raceway",
-] as const;
-
-export const trackPhotoStats = {
-  added: TRACK_PHOTO_SLUGS.filter((key) => Boolean(TRACK_IMAGES[key])).length,
-  expected: TRACK_PHOTO_SLUGS.length,
-};
-
 /** "Autódromo de Interlagos" → "autodromo-de-interlagos". */
 export function slug(s: string): string {
   return s
