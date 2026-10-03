@@ -18,7 +18,31 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.jpg" alt="Live dashboard: position, lap, shift lights, gear and RPM, tyre temperatures, lap times with live delta, fuel and the race engineer" width="100%" />
+  <br/><sub><b>Live dashboard</b>: position, shift lights, gear and RPM, tyre temperatures, live delta, fuel strategy and the race engineer's last call</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/activity.jpg" alt="Activity feed with track photos, flags, track outlines, car and lap stats" width="100%" />
+  <br/><sub><b>Activity</b>: every session with its venue photo, flag, layout, car and lap stats, filtered by practice, qualifying, race or time trial</sub>
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/session.jpg" alt="Session page with session type, pace by type and lap table" /><br/><sub><b>Session</b>: tag the session type, compare your pace here by type, five sector splits per lap</sub></td>
+    <td width="50%"><img src="docs/screenshots/lap-analysis.jpg" alt="Lap analysis with track map and speed, throttle, brake and gear traces" /><br/><sub><b>Lap analysis</b>: racing line on the track map, playback, and synced speed, throttle, brake and gear traces</sub></td>
+  </tr>
+</table>
+
+<sub>Real laps recorded from GT7 on a PS5 (Brands Hatch, Toyota GR Corolla MORIZO Edition).</sub>
+
+---
+
 ## Contents
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Connecting to your PlayStation](#connecting-to-your-playstation)
@@ -60,7 +84,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 - Every lap is recorded automatically at 30 Hz and saved locally in SQLite.
 - The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car make and model, laps, best and average lap, and the delta to your previous best there.
 - **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
-- Track photos come from `src/assets/tracks/` (one per venue; the list of file names is in the README there). A venue without one gets generated art.
+- Every one of the 41 GT7 venues has a preview photo (`src/assets/tracks/`, one per venue, shared by all its layouts). It shows on the Activity card and in the Session header. A session whose track wasn't recognised gets generated art from its outline.
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
 - **Pit detection:** a refuel or a stop flags the lap as a pit lap and keeps it out of best-lap records.
 - Invalid laps (a rewind or reset, or a lap you joined mid-way) are flagged and excluded.
@@ -311,7 +335,7 @@ The tests cover:
 
 ### ✅ Phase 3.6: ApexNorth look & race position
 - [x] New neon UI: dashboard, top toolbar, Activity cards, Session, Settings and Connect redesigned
-- [x] Country flags; track photos per venue (drop-in folder)
+- [x] Country flags; preview photos for all 41 venues on Activity cards and the Session header
 - [x] Session types (Practice / Qualifying / Race / Time Trial) with filters and pace comparison per type
 - [x] Race position callouts: gains, losses, lead, podium, start summary, chase encouragement
 - [x] Track photos for all 41 venues

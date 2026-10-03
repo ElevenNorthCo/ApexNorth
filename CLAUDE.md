@@ -95,7 +95,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Fonts: `.tech` (Chakra Petch, uppercase labels/tabs), `.brand` (Saira italic 900, wordmark and page titles), `.an-bg` page backdrop.
   - `components/Tile.tsx` is the neon panel (`notch` puts the label in the top border).
   - Numbers use the `.num` class (JetBrains Mono, slashed zero).
-- **Artwork:** venue photos go in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob, with generated fallback art (`components/Art.tsx`). No car images: the user didn't like the generated silhouette, so cards show make and model text. Flags are SVGs in `components/Flag.tsx`.
+- **Artwork:** all 41 venues have a 1280×720 photo in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob. `TrackArt` (`components/Art.tsx`) shows it on Activity cards (`fade="right"`) and the Session header (`fade="left"`); unrecognised tracks get generated art. Don't add a Settings section for artwork (the user asked for none). No car images: the user didn't like the generated silhouette, so cards show make and model text. Flags are SVGs in `components/Flag.tsx`.
 - **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
 - **Charts:**
   - Charts use uPlot through `components/TelemetryChart.tsx`.
@@ -105,6 +105,9 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - `components/TrackMap.tsx` is a canvas that plots `(x, -z)`.
   - Orientation hasn't been checked against a real track yet. If it looks mirrored, flip one axis there and in `TrackOutline.tsx`.
 - Don't use `window.alert` or `window.confirm`. Use inline confirms instead (see delete session in `views/Session.tsx`).
+
+## README screenshots
+- `docs/screenshots/*.jpg` (dashboard, activity, session, lap-analysis) were taken from the Vite frontend in headless Chrome, with a mocked Tauri backend serving real sessions dumped from the user's DB, and a real Brands Hatch lap replayed as live telemetry. Retake them when the UI changes noticeably.
 
 ## GT7 facts that shape the design
 - GT7 doesn't send:
