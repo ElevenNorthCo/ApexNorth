@@ -8,7 +8,7 @@ The README has the full feature list, the protocol details, and the **phase road
 
 ```bash
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
-cd src-tauri && cargo test        # Rust unit tests (fast, ~50 tests)
+cd src-tauri && cargo test        # Rust unit tests (fast, ~63 tests)
 npx tsc --noEmit                  # type-check the frontend
 npm run build                     # frontend production build
 npm run tauri build -- --bundles app,dmg   # macOS release → src-tauri/target/release/bundle/

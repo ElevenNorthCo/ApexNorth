@@ -308,8 +308,8 @@ The tests cover:
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
 - [ ] Bundle Piper and a default voice as a Tauri sidecar
-- [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars
-- [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch
+- [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars (verified live on PS5, 2026-10-03)
+- [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch (verified live on PS5, 2026-10-03)
 - [ ] Track database extras: real outlines and track-specific sectors
 - [ ] Multiple dashboard layouts, plus speed/G-force/steering widgets
 - [ ] Pre-race strategy briefing (fuel needed, planned stops)
