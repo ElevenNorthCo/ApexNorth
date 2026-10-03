@@ -314,7 +314,7 @@ The tests cover:
 - [x] Country flags; track photos per venue (drop-in folder)
 - [x] Session types (Practice / Qualifying / Race / Time Trial) with filters and pace comparison per type
 - [x] Race position callouts: gains, losses, lead, podium, start summary, chase encouragement
-- [ ] Track photos for all 41 venues
+- [x] Track photos for all 41 venues
 
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
