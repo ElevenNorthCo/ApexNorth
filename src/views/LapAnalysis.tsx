@@ -187,7 +187,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   const sectorDelta = (i: number) => (cmp && lap.sectorsMs[i] != null && cmp.sectorsMs[i] != null ? lap.sectorsMs[i] - cmp.sectorsMs[i] : null);
 
   return (
-    <div className="flex h-full bg-[#0d0e13]">
+    <div className="flex h-full bg-ink">
       <div className="relative h-full w-[52%] min-w-[360px]">
         <TrackMap
           samples={samples}
@@ -200,7 +200,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         />
         <button
           onClick={() => (sessionId != null ? go({ name: "session", sessionId }) : go({ name: "activity" }))}
-          className="absolute left-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#1d2029] text-white hover:bg-[#2a2e3a]"
+          className="absolute left-4 top-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#0e1413] border border-white/10 text-white hover:border-accent/60"
         >
           <Back />
         </button>
@@ -216,7 +216,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
             <button
               key={r}
               onClick={() => setRate(r)}
-              className={`num h-9 rounded-full px-3 text-[13px] ${rate === r ? "bg-white text-black" : "bg-[#1d2029] text-white/80"}`}
+              className={`num h-9 rounded-full px-3 text-[13px] ${rate === r ? "bg-white text-black" : "bg-[#0e1413] border border-white/10 text-white/80"}`}
             >
               {r}×
             </button>
@@ -224,7 +224,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         </div>
       </div>
 
-      <div className="scroll-thin flex-1 overflow-y-auto border-l border-white/10 bg-panel px-5 pb-10 pt-5">
+      <div className="scroll-thin flex-1 overflow-y-auto border-l border-accent/20 bg-panel px-5 pb-10 pt-5">
         <div className="flex items-baseline justify-between">
           <div>
             <div className="text-[13px] text-white/50">
@@ -240,7 +240,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
           </div>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-[#232634]">
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
           <table className="num w-full text-[15px]">
             <thead>
               <tr className="border-b border-white/10 text-left font-sans text-[14px] font-semibold">
@@ -253,7 +253,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
             </thead>
             <tbody>
               <tr className="border-b border-white/10">
-                <td className="px-4 py-3 font-sans font-semibold text-[#c9b0f7]">Lap {lap.lapNo}</td>
+                <td className="px-4 py-3 font-sans font-semibold text-accent">Lap {lap.lapNo}</td>
                 {Array.from({ length: SECTORS }, (_, i) => (
                   <td key={i} className="px-3 py-3 text-right">{split(lap.sectorsMs[i])}</td>
                 ))}
@@ -264,7 +264,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
                   <select
                     value={cmpId ?? ""}
                     onChange={(e) => setCmpId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full rounded-lg bg-transparent font-sans font-semibold text-[#c9b0f7] outline-none"
+                    className="w-full rounded-lg bg-transparent font-sans font-semibold text-accent outline-none"
                   >
                     <option value="">⊕ Compare</option>
                     {options.map((o) => (
@@ -300,7 +300,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
           </table>
         </div>
 
-        <div className="mt-4 inline-flex rounded-2xl border border-white/10 bg-[#232634] p-1">
+        <div className="mt-4 inline-flex rounded-2xl border border-white/10 bg-black/40 p-1">
           {[null, 0, 1, 2, 3, 4].map((s) => (
             <button
               key={String(s)}

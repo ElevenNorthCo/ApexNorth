@@ -39,7 +39,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   ├ packet.rs      Packet::parse (+ to_bytes for the sim). Offsets verified on a real PS5.
   └ Handler (lib.rs LiveHandler) per packet:
        session/engine.rs  → LiveState + EngineEvents (SessionStarted/Ended, RaceStart, LapCompleted,
-                            SectorCompleted, LapInvalidated, Incident, PositionChanged)
+                            SectorCompleted, LapInvalidated, Incident, PositionChanged, RacePositionChanged)
          ├ fuel.rs        FuelModel (+ fuel-off detection) → RaceStrategy (window, stops, target)
          ├ tyres.rs       TyreModel → TyreEstimate (lap-time trend, fuel-corrected)
          ├ strategy.rs    fuel + tyres → PitPlan
@@ -86,12 +86,17 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Views live in `src/views/`, shared pieces in `src/components/`.
   - `startBridge()` wires backend events into the store.
 - **Dashboard (`views/Dashboard.tsx`):**
-  - It is laid out on a fixed **1000×462 design canvas** with absolute pixel positions, scaled by `ScaleToFit`, to match Victory's layout.
+  - It is laid out on a fixed **1000×540 design canvas** with absolute pixel positions, scaled by `ScaleToFit` (ApexNorth's own neon layout, not Victory's).
+  - Its logo drops `components/TopBar.tsx` down over it; every other view shows the TopBar permanently (Lap analysis has none).
   - Tweak positions and sizes in those canvas pixels. Check text fits inside the tiles (fuel labels and lap time padding have needed fixes before).
 - **Styling:**
   - Tailwind v4, with theme tokens in `src/index.css` (`@theme`).
-  - Tile colors: `--color-pos/lap/laps/laptime/brk/thr/fuel`.
+  - Tile colors: `--color-pos/lap/laps/laptime/brk/thr/fuel`; accent is neon green `--color-accent`.
+  - Fonts: `.tech` (Chakra Petch, uppercase labels/tabs), `.brand` (Saira italic 900, wordmark and page titles), `.an-bg` page backdrop.
+  - `components/Tile.tsx` is the neon panel (`notch` puts the label in the top border).
   - Numbers use the `.num` class (JetBrains Mono, slashed zero).
+- **Artwork:** venue photos go in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob, with generated fallback art (`components/Art.tsx`). No car images: the user didn't like the generated silhouette, so cards show make and model text. Flags are SVGs in `components/Flag.tsx`.
+- **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
 - **Charts:**
   - Charts use uPlot through `components/TelemetryChart.tsx`.
   - The `series` and `x` arrays must be memoized, or the chart rebuilds.
@@ -104,7 +109,8 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 ## GT7 facts that shape the design
 - GT7 doesn't send:
   - a track ID or car name (only `car_code`; both come from the built-in catalog)
-  - race position during the race (only `pre_race_position` on the grid), or any data on other cars. Don't announce position changes until a reliable source exists.
+  - any data on other cars (no gaps ahead or behind), PP or tuning.
+- Race position: `pre_race_position` updates live during races (confirmed on the user's PS5). The engine only emits `RacePositionChanged` after `POSITION_CONFIRM` (30) agreeing packets; `rules.rs` announces the net change once it's held for `POSITION_SETTLE` (3 s, 6 s in the opening 25 s). The demo sim scripts a running order to exercise this.
   - tyre wear
   - the current lap time
 - `gear` 0 = reverse. If the `IN_GEAR` flag is clear, show N. `suggested_gear` 15 = none.

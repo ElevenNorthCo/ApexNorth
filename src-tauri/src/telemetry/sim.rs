@@ -160,6 +160,25 @@ impl Car {
         }
     }
 
+    /// Scripted running order (GT7 reports it in `pre_race_position`): a good
+    /// start, a podium pass, a side-by-side flicker that shouldn't count, a run
+    /// to P2, places lost in the lap 8 spin, then a fight back.
+    fn race_position(&self) -> i16 {
+        let s = self.s;
+        match self.lap {
+            0 => 5,
+            1 => if s < 900.0 { 5 } else { 4 },
+            2 => if s < 2000.0 { 4 } else { 3 },
+            3 => if (1000.0..1010.0).contains(&s) { 2 } else { 3 },
+            4 | 5 => 3,
+            6 => if s < 1500.0 { 3 } else { 2 },
+            7 => 2,
+            8 => if self.spun { 5 } else { 2 },
+            9 => if s < 2500.0 { 5 } else { 4 },
+            _ => if s < 1200.0 { 4 } else { 3 },
+        }
+    }
+
     fn reset_race(&mut self) {
         self.s = 0.0;
         self.v = 0.0;
@@ -331,8 +350,8 @@ impl Car {
             best_lap_ms: self.best,
             last_lap_ms: self.last,
             time_of_day_ms: self.tod_ms,
-            pre_race_position: if self.lap == 0 { 5 } else { -1 },
-            num_cars: if self.lap == 0 { 16 } else { -1 },
+            pre_race_position: self.race_position(),
+            num_cars: 16,
             rpm_alert_min: 7600,
             rpm_alert_max: 8300,
             max_speed_kph: 300,
@@ -485,5 +504,12 @@ mod tests {
         assert!(!has(&crew, "won't count"), "no demo lap should be thrown out");
         assert!(crew.len() > normal.len() && normal.len() > minimal.len());
         assert!(!has(&minimal, "Sector"));
+        // Race position: one call per settled change, and the flicker on lap 3 is ignored.
+        assert!(has(&crew, "Great start! Up one place to P4."));
+        assert!(has(&crew, "Into a podium spot, P3!"));
+        assert!(has(&crew, "Lost three places there, P5."), "places lost in the spin are called calmly");
+        assert!(has(&crew, "Holding P3") || has(&crew, "reel in P2") || has(&crew, "catch P2") || has(&crew, "Solid, P3"), "encouragement while holding");
+        assert!(!has(&crew, "P2. ") || !crew.iter().any(|(l, t)| *l == 3 && t.contains("P2")), "lap 3 flicker not announced");
+        assert!(has(&normal, "P3") && has(&minimal, "podium"));
     }
 }

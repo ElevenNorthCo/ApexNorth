@@ -304,6 +304,11 @@ fn delete_session(state: State<AppState>, session_id: i64) -> Result<(), String>
 }
 
 #[tauri::command]
+fn set_session_kind(state: State<AppState>, session_id: i64, kind: Option<String>) -> Result<(), String> {
+    state.db.lock().set_session_kind(session_id, kind.as_deref())
+}
+
+#[tauri::command]
 fn rename_track(state: State<AppState>, track_id: i64, name: String) -> Result<(), String> {
     state.db.lock().rename_track(track_id, name.trim())
 }
@@ -434,6 +439,7 @@ pub fn run() {
             track_laps,
             get_lap,
             delete_session,
+            set_session_kind,
             rename_track,
             track_catalog,
             get_settings,

@@ -7,6 +7,7 @@ export type FuelState = "unknown" | "active" | "inactive";
 export type InvalidReason = "joined_mid_lap" | "rewind_or_reset" | "telemetry_jump" | "insufficient_distance" | "pit_lap";
 export type TyrePerformance = "fresh" | "stable" | "declining" | "poor" | "critical";
 export type ChatterLevel = "minimal" | "normal" | "chatty" | "crewChief";
+export type SessionKind = "practice" | "qualifying" | "race" | "time_trial";
 
 export interface RaceStrategy {
   fuelPerLapPct: number;
@@ -101,7 +102,14 @@ export interface SessionSummary {
   totalLaps: number;
   lapCount: number;
   bestMs: number | null;
+  /** Mean of the valid, non-pit laps. */
+  avgMs: number | null;
   outline: [number, number][];
+  /** Type the user tagged, or null (inferred from totalLaps). */
+  kind: SessionKind | null;
+  layoutId: string | null;
+  venue: string | null;
+  country: string | null;
 }
 
 export interface LapSummary {
@@ -192,6 +200,7 @@ export const api = {
   trackLaps: (trackId: number) => invoke<LapSummary[]>("track_laps", { trackId }),
   getLap: (lapId: number) => invoke<LapDetail>("get_lap", { lapId }),
   deleteSession: (sessionId: number) => invoke<void>("delete_session", { sessionId }),
+  setSessionKind: (sessionId: number, kind: SessionKind | null) => invoke<void>("set_session_kind", { sessionId, kind }),
   renameTrack: (trackId: number, name: string) => invoke<void>("rename_track", { trackId, name }),
   trackCatalog: () => invoke<TrackLayout[]>("track_catalog"),
   getSettings: () => invoke<Settings>("get_settings"),

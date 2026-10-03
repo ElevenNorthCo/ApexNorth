@@ -40,9 +40,21 @@ pub struct SessionSummary {
     pub total_laps: i32,
     pub lap_count: i64,
     pub best_ms: Option<i64>,
+    /// Mean of the valid, non-pit laps.
+    pub avg_ms: Option<f64>,
     /// Track shape as [x, z] points, for thumbnails.
     pub outline: Vec<[f32; 2]>,
+    /// Session type the user tagged ("practice", "qualifying", "race",
+    /// "time_trial"), or None to infer it from the lap count.
+    pub kind: Option<String>,
+    /// Catalog layout the track was recognised as, with its venue and country.
+    pub layout_id: Option<String>,
+    pub venue: Option<String>,
+    pub country: Option<String>,
 }
+
+/// Session types the user can tag a session with.
+pub const SESSION_KINDS: [&str; 4] = ["practice", "qualifying", "race", "time_trial"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +171,14 @@ impl Db {
         if !has_layout {
             // The catalog layout (see catalog::tracks) a track was recognised as.
             conn.execute_batch("ALTER TABLE tracks ADD COLUMN layout_id TEXT").map_err(err)?;
+        }
+        let has_kind: bool = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'kind'", [], |r| r.get::<_, i64>(0))
+            .map_err(err)?
+            > 0;
+        if !has_kind {
+            // User-chosen session type (see SESSION_KINDS); NULL = inferred.
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN kind TEXT").map_err(err)?;
         }
         Ok(Db { conn })
     }
@@ -429,7 +449,8 @@ impl Db {
             .conn
             .prepare(
                 "SELECT s.id, s.track_id, t.name, s.car_code, s.started_at, s.total_laps,
-                        COUNT(l.id), MIN(CASE WHEN l.is_valid = 1 THEN l.time_ms END), t.outline
+                        COUNT(l.id), MIN(CASE WHEN l.is_valid = 1 THEN l.time_ms END), t.outline,
+                        AVG(CASE WHEN l.is_valid = 1 AND l.is_pit = 0 THEN l.time_ms END), s.kind, t.layout_id
                  FROM sessions s
                  LEFT JOIN tracks t ON t.id = s.track_id
                  JOIN laps l ON l.session_id = s.id
@@ -438,6 +459,8 @@ impl Db {
             .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {
+                let layout_id: Option<String> = r.get(11)?;
+                let layout = layout_id.as_deref().and_then(|id| tracks::catalog().by_id(id));
                 Ok(SessionSummary {
                     id: r.get(0)?,
                     track_id: r.get(1)?,
@@ -452,6 +475,11 @@ impl Db {
                         .get::<_, Option<String>>(8)?
                         .and_then(|o| serde_json::from_str(&o).ok())
                         .unwrap_or_default(),
+                    avg_ms: r.get(9)?,
+                    kind: r.get(10)?,
+                    venue: layout.map(|l| l.venue.clone()),
+                    country: layout.map(|l| l.country.clone()),
+                    layout_id,
                 })
             })
             .map_err(err)?;
@@ -505,6 +533,19 @@ impl Db {
                     samples: decode(&blob)?,
                 })
             })
+    }
+
+    /// Tag a session as practice, qualifying, race or time trial (None = infer).
+    pub fn set_session_kind(&self, session_id: i64, kind: Option<&str>) -> Result<()> {
+        if let Some(k) = kind {
+            if !SESSION_KINDS.contains(&k) {
+                return Err(format!("unknown session type {k:?}"));
+            }
+        }
+        self.conn
+            .execute("UPDATE sessions SET kind = ?1 WHERE id = ?2", params![kind, session_id])
+            .map_err(err)?;
+        Ok(())
     }
 
     pub fn delete_session(&self, session_id: i64) -> Result<()> {
@@ -563,6 +604,13 @@ mod tests {
         let sessions = db.list_sessions().unwrap();
         assert_eq!(sessions[0].lap_count, 2);
         assert_eq!(sessions[0].best_ms, Some(95_000));
+        assert_eq!(sessions[0].avg_ms, Some(95_000.0));
+        assert_eq!(sessions[0].kind, None);
+        db.set_session_kind(s, Some("qualifying")).unwrap();
+        assert_eq!(db.list_sessions().unwrap()[0].kind.as_deref(), Some("qualifying"));
+        assert!(db.set_session_kind(s, Some("warmup")).is_err());
+        db.set_session_kind(s, None).unwrap();
+        assert_eq!(db.list_sessions().unwrap()[0].kind, None);
         let detail = db.lap_detail(id).unwrap();
         assert_eq!(detail.summary.invalid_reason.as_deref(), Some("rewind_or_reset"));
         assert_eq!(detail.samples.len(), 50);

@@ -4,6 +4,7 @@ import { api, type Callouts, type ChatterLevel, type Settings } from "../lib/api
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
+import { Brand } from "../components/Brand";
 
 const CALLOUTS: { key: keyof Callouts; label: string; hint: string }[] = [
   { key: "lapTimes", label: "Lap times", hint: "Every lap, personal bests and the final lap" },
@@ -15,7 +16,7 @@ const CALLOUTS: { key: keyof Callouts; label: string; hint: string }[] = [
   { key: "wheelSlip", label: "Wheelspin & lock-ups", hint: "Big slides and repeated slip" },
   { key: "incidents", label: "Incidents", hint: "Spins and what to watch after one" },
   { key: "raceStart", label: "Race start", hint: "Lights out call" },
-  { key: "position", label: "Grid position", hint: "Starting slot before the race" },
+  { key: "position", label: "Race position", hint: "Grid slot, places gained or lost, chasing the next car" },
 ];
 
 const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
@@ -77,17 +78,20 @@ export function SettingsView() {
   const name = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.onnx$/, "") ?? p;
 
   return (
-    <div className="scroll-thin h-full overflow-y-auto bg-panel pb-32">
-      <div className="mx-auto max-w-2xl px-6 pt-10">
-        <h1 className="text-[32px] font-semibold tracking-tight">Settings</h1>
+    <div className="scroll-thin h-full overflow-y-auto pb-16">
+      <div className="mx-auto max-w-3xl px-6 pt-8">
+        <h1 className="brand text-[44px] leading-none">
+          SET<span className="text-accent drop-shadow-[0_0_12px_rgba(57,255,122,0.5)]">TINGS</span>
+        </h1>
+        <div className="tech mt-2 text-[13px] italic tracking-[0.3em] text-white/60">Connection, units and your race engineer</div>
 
-        <Section title="Connection">
+        <Section title="Connection" color="var(--color-pos)">
           <Row label="PlayStation IP" hint="Saved automatically after the first connection">
             <input
               defaultValue={settings.lastIp ?? ""}
               placeholder="Auto-discover"
               onBlur={(e) => update((s) => void (s.lastIp = e.target.value.trim() || null))}
-              className="num w-48 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-[14px] outline-none focus:border-accent"
+              className="num w-48 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-[14px] outline-none focus:border-accent"
             />
           </Row>
           <Row label="Connect on launch">
@@ -105,7 +109,7 @@ export function SettingsView() {
           </Row>
         </Section>
 
-        <Section title="Race engineer voice">
+        <Section title="Race engineer voice" color="var(--color-thr)">
           <Row label="Voice callouts" hint="Spoken with Piper, fully offline">
             <Toggle checked={v.enabled} onChange={(c) => update((s) => void (s.voice.enabled = c))} />
           </Row>
@@ -118,7 +122,7 @@ export function SettingsView() {
                 <select
                   value={v.modelPath}
                   onChange={(e) => update((s) => void (s.voice.modelPath = e.target.value))}
-                  className="max-w-52 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-[14px] outline-none"
+                  className="max-w-52 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-[14px] outline-none focus:border-accent"
                 >
                   {!voices.includes(v.modelPath) && <option value={v.modelPath}>{v.modelPath ? name(v.modelPath) : "Select…"}</option>}
                   {voices.map((p) => (
@@ -151,7 +155,7 @@ export function SettingsView() {
           </div>
         </Section>
 
-        <Section title="Race engineer">
+        <Section title="Race engineer" color="var(--color-lap)">
           <Row label="Engineer chatter" hint={CHATTER.find((c) => c.value === v.chatter)?.hint}>
             <Segmented
               value={v.chatter}
@@ -161,7 +165,7 @@ export function SettingsView() {
           </Row>
         </Section>
 
-        <Section title="Callout categories">
+        <Section title="Callout categories" color="var(--color-laps)">
           {CALLOUTS.map((c) => (
             <Row key={c.key} label={c.label} hint={c.hint}>
               <Toggle
@@ -172,17 +176,29 @@ export function SettingsView() {
           ))}
         </Section>
 
-        <p className="mt-8 text-center text-[12px] text-white/35">ApexNorth · Eleven North · GT7 telemetry over UDP 33739/33740</p>
+        <div className="mt-10 flex flex-col items-center gap-2 opacity-60">
+          <Brand scale={0.6} />
+          <p className="tech text-[11px] text-white/50">Eleven North · GT7 telemetry over UDP 33739/33740</p>
+        </div>
       </div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
   return (
-    <section className="mt-8">
-      <h2 className="mb-2 text-[13px] font-semibold tracking-[0.08em] text-white/50">{title.toUpperCase()}</h2>
-      <div className="divide-y divide-white/5 rounded-2xl border border-white/10 bg-[#232634] px-5">{children}</div>
+    <section className="relative mt-9">
+      <h2 className="tech absolute left-5 top-0 z-10 -translate-y-1/2 bg-ink px-2 text-[13px] font-semibold text-white">{title}</h2>
+      <div
+        className="divide-y divide-white/[0.06] rounded-[14px] px-5 pt-2"
+        style={{
+          border: `1.5px solid color-mix(in srgb, ${color} 75%, transparent)`,
+          background: "linear-gradient(180deg, rgba(16,24,22,0.9), rgba(5,8,7,0.95))",
+          boxShadow: `0 0 14px color-mix(in srgb, ${color} 22%, transparent)`,
+        }}
+      >
+        {children}
+      </div>
     </section>
   );
 }
@@ -205,7 +221,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (c: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative h-7 w-12 rounded-full transition ${checked ? "bg-accent" : "bg-white/15"}`}
+      className={`relative h-7 w-12 rounded-full transition ${checked ? "bg-accent shadow-[0_0_10px_rgba(57,255,122,0.6)]" : "bg-white/15"}`}
     >
       <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${checked ? "left-6" : "left-1"}`} />
     </button>
@@ -225,19 +241,19 @@ function Slider(props: { value: number; min: number; max: number; step: number; 
       onChange={(e) => setLocal(Number(e.target.value))}
       onPointerUp={() => props.onChange(local)}
       onKeyUp={() => props.onChange(local)}
-      className="w-44 accent-[#b18cf2]"
+      className="w-44 accent-[#39ff7a]"
     />
   );
 }
 
 function Segmented({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
   return (
-    <div className="inline-flex rounded-xl bg-black/30 p-1">
+    <div className="inline-flex rounded-xl border border-white/10 bg-black/40 p-1">
       {options.map(([v, label]) => (
         <button
           key={v}
           onClick={() => onChange(v)}
-          className={`rounded-lg px-3 py-1.5 text-[13px] font-medium ${value === v ? "bg-accent text-black" : "text-white/70"}`}
+          className={`tech rounded-lg px-3 py-1.5 text-[12px] font-semibold ${value === v ? "bg-accent text-black shadow-[0_0_10px_rgba(57,255,122,0.5)]" : "text-white/70 hover:text-white"}`}
         >
           {label}
         </button>

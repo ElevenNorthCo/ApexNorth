@@ -186,7 +186,7 @@ export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sector
 
   return (
     <div
-      className="relative h-full w-full bg-[#0d0e13]"
+      className="relative h-full w-full bg-ink"
       onWheel={(e) => onZoom(Math.max(1, Math.min(12, zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2))))}
     >
       <canvas ref={ref} className="h-full w-full" />
@@ -194,13 +194,13 @@ export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sector
       <div className="absolute bottom-5 right-4 flex flex-col gap-2">
         <button
           onClick={() => onZoom(Math.min(12, zoom * 1.5))}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1d2029] text-2xl text-white/90 hover:bg-[#2a2e3a]"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0e1413] border border-white/10 text-2xl text-white/90 hover:border-accent/60"
         >
           +
         </button>
         <button
           onClick={() => onZoom(Math.max(1, zoom / 1.5))}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1d2029] text-2xl text-white/90 hover:bg-[#2a2e3a]"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0e1413] border border-white/10 text-2xl text-white/90 hover:border-accent/60"
         >
           −
         </button>

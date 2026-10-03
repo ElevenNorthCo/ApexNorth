@@ -21,6 +21,9 @@ const STALE_IDS: i32 = 600;
 const JUMP_SLACK_M: f32 = 40.0;
 /// Packets that must agree on the new position before a jump is believed.
 const JUMP_CONFIRM: u32 = 3;
+/// Packets (60 Hz) a new race position must hold before it's believed, so a
+/// side-by-side moment that flicks back and forth isn't treated as a pass.
+const POSITION_CONFIRM: u32 = 30;
 /// An unresolved jump is believed after this many ticks anyway.
 const JUMP_RESOLVE_TICKS: u32 = 60;
 /// A lap shorter than this fraction of the reference lap didn't cover the track.
@@ -121,6 +124,8 @@ pub enum EngineEvent {
     LapInvalidated { lap_no: i16, reason: InvalidReason },
     Incident(Incident),
     PositionChanged { to: i16 },
+    /// Race position changed during the race (confirmed over POSITION_CONFIRM packets).
+    RacePositionChanged { from: i16, to: i16 },
 }
 
 #[derive(Debug, Clone)]
@@ -257,6 +262,9 @@ pub struct Engine {
     paused_since_anchor: bool,
     g: [f32; 2],
     live: LiveState,
+    /// Trusted race position, and a different one waiting for confirmation.
+    race_pos: Option<i16>,
+    pos_candidate: Option<(i16, u32)>,
 }
 
 impl Engine {
@@ -324,6 +332,8 @@ impl Engine {
         self.reference = None;
         self.last_lap_ms = None;
         self.pending = None;
+        self.race_pos = None;
+        self.pos_candidate = None;
         ev.push(EngineEvent::SessionStarted { car_code: p.car_code, total_laps: p.total_laps });
     }
 
@@ -369,6 +379,7 @@ impl Engine {
                 ev.push(EngineEvent::PositionChanged { to: p.pre_race_position });
             }
         }
+        self.track_race_position(p, paused, &mut ev);
 
         if self.session_active && p.car_code != self.car_code {
             self.end_session(&mut ev);
@@ -389,6 +400,38 @@ impl Engine {
         self.update_live(p, paused);
         self.last = Some(p.clone());
         ev
+    }
+
+    /// The grid slot is the baseline; during the race a new position must hold
+    /// for POSITION_CONFIRM packets before it counts.
+    fn track_race_position(&mut self, p: &Packet, paused: bool, ev: &mut Vec<EngineEvent>) {
+        let pos = p.pre_race_position;
+        if pos <= 0 || paused {
+            return;
+        }
+        if p.lap == 0 {
+            self.race_pos = Some(pos);
+            self.pos_candidate = None;
+            return;
+        }
+        let Some(cur) = self.race_pos else {
+            self.race_pos = Some(pos);
+            return;
+        };
+        if pos == cur {
+            self.pos_candidate = None;
+            return;
+        }
+        let c = self.pos_candidate.get_or_insert((pos, 0));
+        if c.0 != pos {
+            *c = (pos, 0);
+        }
+        c.1 += 1;
+        if c.1 >= POSITION_CONFIRM {
+            ev.push(EngineEvent::RacePositionChanged { from: cur, to: pos });
+            self.race_pos = Some(pos);
+            self.pos_candidate = None;
+        }
     }
 
     /// Decide whether the car's new position is believable. A single wild
