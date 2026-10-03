@@ -49,9 +49,11 @@ export function Connect() {
   const slow = searchingSince != null && Date.now() - searchingSince > 12000;
 
   return (
-    <div className="scroll-thin h-full overflow-y-auto bg-[#12141b] px-6 pb-32 pt-10">
+    <div className="scroll-thin h-full overflow-y-auto px-6 pb-16 pt-8">
       <div className="mx-auto max-w-2xl">
-        <h1 className="text-3xl font-semibold tracking-tight">Connect to Gran Turismo 7</h1>
+        <h1 className="brand text-[44px] leading-none">
+          CONNECT <span className="text-accent drop-shadow-[0_0_12px_rgba(57,255,122,0.5)]">GT7</span>
+        </h1>
         <p className="mt-2 text-[15px] text-muted">
           Live telemetry streams over your Wi-Fi straight from the PlayStation. No extra hardware needed.
         </p>
@@ -74,8 +76,8 @@ export function Connect() {
           <Step n={2} title={status.state === "connecting" ? `Connecting to ${status.ip}` : "Searching for your PlayStation"} state={step > 2 ? "done" : step === 2 ? "active" : "todo"}>
             {step === 2 && (
               <div className="space-y-3">
-                <div className="flex items-center gap-3 text-[14px] text-[#f2e14c]">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-[#f2e14c]" />
+                <div className="flex items-center gap-3 text-[14px] text-[#ffc81a]">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-[#ffc81a]" />
                   {status.state === "lost" ? "Signal lost. Waiting for GT7 to resume…" : "Listening for telemetry…"}
                 </div>
                 {slow && (
@@ -117,13 +119,13 @@ export function Connect() {
 
         {manual && (
           <form
-            className="mt-6 rounded-2xl border border-white/10 bg-panel p-5"
+            className="mt-6 rounded-[14px] border border-pos/60 bg-black/50 p-5 shadow-[0_0_14px_rgba(30,167,255,0.2)]"
             onSubmit={(e) => {
               e.preventDefault();
               run(() => api.connect(ip));
             }}
           >
-            <label className="text-[13px] font-medium text-muted">PlayStation IP address</label>
+            <label className="tech text-[13px] font-medium text-muted">PlayStation IP address</label>
             <div className="mt-2 flex gap-3">
               <input
                 autoFocus
@@ -150,19 +152,23 @@ export function Connect() {
 function Step({ n, title, state, children }: { n: number; title: string; state: "todo" | "active" | "done"; children?: React.ReactNode }) {
   return (
     <li
-      className={`rounded-2xl border p-5 transition ${
-        state === "active" ? "border-accent/50 bg-panel" : state === "done" ? "border-white/10 bg-panel" : "border-white/5 bg-panel/40 opacity-50"
+      className={`rounded-[14px] border p-5 transition ${
+        state === "active"
+          ? "border-accent/70 bg-black/50 shadow-[0_0_16px_rgba(57,255,122,0.2)]"
+          : state === "done"
+            ? "border-white/15 bg-black/40"
+            : "border-white/5 bg-black/20 opacity-50"
       }`}
     >
       <div className="flex items-center gap-3">
         <span
           className={`flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-bold ${
-            state === "done" ? "bg-green-500 text-black" : state === "active" ? "bg-accent text-black" : "bg-white/10"
+            state === "done" ? "bg-accent text-black" : state === "active" ? "bg-accent text-black shadow-[0_0_10px_rgba(57,255,122,0.6)]" : "bg-white/10"
           }`}
         >
           {state === "done" ? <Check width={16} height={16} strokeWidth={3} /> : n}
         </span>
-        <h2 className="text-[17px] font-semibold">{title}</h2>
+        <h2 className="tech text-[16px] font-semibold">{title}</h2>
       </div>
       {children && <div className="mt-3 pl-10">{children}</div>}
     </li>
@@ -178,12 +184,12 @@ export function Btn({
   return (
     <button
       {...rest}
-      className={`rounded-xl px-4 py-2.5 text-[14px] font-semibold transition disabled:opacity-40 ${
+      className={`tech rounded-[10px] px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-40 ${
         primary
-          ? "bg-accent text-black hover:brightness-110"
+          ? "bg-accent text-black shadow-[0_0_14px_rgba(57,255,122,0.45)] hover:brightness-110"
           : danger
-            ? "border border-red-500/40 text-red-300 hover:bg-red-500/10"
-            : "border border-white/15 text-white hover:bg-white/5"
+            ? "border border-red-500/50 text-red-300 hover:bg-red-500/10"
+            : "border border-white/20 text-white hover:border-accent/60 hover:text-accent"
       } ${rest.className ?? ""}`}
     >
       {children}

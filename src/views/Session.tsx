@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type InvalidReason, type LapSummary, type SessionSummary, type TrackLayout } from "../lib/api";
+import { api, type InvalidReason, type LapSummary, type SessionKind, type SessionSummary, type TrackLayout } from "../lib/api";
 
 const INVALID_WHY: Record<InvalidReason, string> = {
   joined_mid_lap: "Timing joined part-way through the lap",
@@ -13,11 +13,15 @@ import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Back, Check, Pencil, Trash } from "../components/icons";
 import { TrackOutline } from "../components/TrackOutline";
+import { TrackArt } from "../components/Art";
+import { Flag } from "../components/Flag";
+import { KINDS, kindInfo, sessionKind, trackTitle } from "../lib/media";
 
 export function SessionView({ sessionId }: { sessionId: number }) {
   const go = useStore((s) => s.go);
   const version = useStore((s) => s.lapsVersion);
-  const [session, setSession] = useState<SessionSummary | null>(null);
+  const [all, setAll] = useState<SessionSummary[]>([]);
+  const session = all.find((s) => s.id === sessionId) ?? null;
   const [laps, setLaps] = useState<LapSummary[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -27,7 +31,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
   }, [editing, layouts.length]);
 
   const load = () => {
-    api.listSessions().then((all) => setSession(all.find((s) => s.id === sessionId) ?? null));
+    api.listSessions().then(setAll);
     api.sessionLaps(sessionId).then(setLaps);
   };
   useEffect(load, [sessionId, version]);
@@ -50,64 +54,79 @@ export function SessionView({ sessionId }: { sessionId: number }) {
   };
 
   return (
-    <div className="scroll-thin h-full overflow-y-auto bg-panel pb-32">
-      <div className="mx-auto max-w-4xl px-6 pt-8">
-        <button onClick={() => go({ name: "activity" })} className="flex items-center gap-1 text-white/70 hover:text-white">
+    <div className="scroll-thin h-full overflow-y-auto pb-16">
+      <div className="mx-auto max-w-5xl px-6 pt-6">
+        <button onClick={() => go({ name: "activity" })} className="tech flex items-center gap-1 text-[14px] text-white/70 hover:text-accent">
           <Back /> Activity
         </button>
 
         {session && (
-          <div className="mt-5 flex items-start justify-between gap-6">
-            <div className="min-w-0">
-              {editing != null ? (
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    saveName();
-                  }}
-                >
-                  <input
-                    autoFocus
-                    list="gt7-tracks"
-                    placeholder="Pick a GT7 track or type a name"
-                    value={editing}
-                    onChange={(e) => setEditing(e.target.value)}
-                    className="rounded-lg border border-white/15 bg-black/40 px-3 py-1.5 text-[22px] font-bold outline-none focus:border-accent"
-                  />
-                  <datalist id="gt7-tracks">
-                    {layouts.map((l) => (
-                      <option key={l.id} value={l.name}>
-                        {`${l.country} · ${(l.lengthM / 1000).toFixed(2)} km`}
-                      </option>
-                    ))}
-                  </datalist>
-                  <button type="submit" className="text-green-400">
-                    <Check />
-                  </button>
-                </form>
-              ) : (
-                <h1 className="flex items-center gap-3 text-[28px] font-bold">
-                  {session.trackName ?? "Unknown track"}
-                  {session.trackId != null && (
-                    <button title="Rename track" onClick={() => setEditing(session.trackName ?? "")} className="text-white/40 hover:text-white">
-                      <Pencil width={18} height={18} />
+          <div
+            className="relative mt-4 flex min-h-[150px] overflow-hidden rounded-[16px]"
+            style={{ border: `1.5px solid ${kindInfo(sessionKind(session)).color}`, boxShadow: `0 0 18px color-mix(in srgb, ${kindInfo(sessionKind(session)).color} 30%, transparent)` }}
+          >
+            <TrackArt venue={session.venue} outline={session.outline} className="absolute inset-0 opacity-60" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#050807] via-[#050807]/85 to-transparent" />
+            <div className="relative flex flex-1 items-center justify-between gap-6 p-6">
+              <div className="min-w-0">
+                {editing != null ? (
+                  <form
+                    className="flex items-center gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      saveName();
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      list="gt7-tracks"
+                      placeholder="Pick a GT7 track or type a name"
+                      value={editing}
+                      onChange={(e) => setEditing(e.target.value)}
+                      className="tech rounded-lg border border-white/15 bg-black/60 px-3 py-1.5 text-[22px] font-bold outline-none focus:border-accent"
+                    />
+                    <datalist id="gt7-tracks">
+                      {layouts.map((l) => (
+                        <option key={l.id} value={l.name}>
+                          {`${l.country} · ${(l.lengthM / 1000).toFixed(2)} km`}
+                        </option>
+                      ))}
+                    </datalist>
+                    <button type="submit" className="text-accent">
+                      <Check />
                     </button>
-                  )}
-                </h1>
-              )}
-              <div className="mt-1 text-white/60">
-                {shortDate(session.startedAt)} · {timeOfDay(session.startedAt)} · {carName(session.carCode, session.carName)} ·{" "}
-                {session.totalLaps > 0 ? `Race (${session.totalLaps} laps)` : "Practice"}
+                  </form>
+                ) : (
+                  <>
+                    <h1 className="flex items-center gap-3">
+                      <Flag country={session.country} height={22} />
+                      <span className="tech text-[30px] font-bold leading-none tracking-[0.04em]">{trackTitle(session)[0]}</span>
+                      {session.trackId != null && (
+                        <button title="Rename track" onClick={() => setEditing(session.trackName ?? "")} className="text-white/40 hover:text-accent">
+                          <Pencil width={18} height={18} />
+                        </button>
+                      )}
+                    </h1>
+                    {trackTitle(session)[1] && <div className="tech mt-1.5 text-[15px] text-white/60">{trackTitle(session)[1]}</div>}
+                  </>
+                )}
+                <div className="mt-3 text-[15px] text-white/70">
+                  {shortDate(session.startedAt)} · {timeOfDay(session.startedAt)} · {carName(session.carCode, session.carName)}
+                  {session.totalLaps > 0 && ` · ${session.totalLaps} lap race distance`}
+                </div>
               </div>
+              <TrackOutline points={session.outline} size={96} stroke="white" strokeWidth={4} />
             </div>
-            <TrackOutline points={session.outline} size={84} stroke="#4a9eff" />
           </div>
         )}
 
-        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-[#232634]">
+        {session && <KindPicker session={session} onChange={load} />}
+        {session && <TrackComparison session={session} all={all} />}
+
+        <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Laps</h2>
+        <div className="overflow-hidden rounded-[14px] border border-laptime/50 bg-black/40 shadow-[0_0_14px_rgba(31,168,255,0.15)]">
           <table className="w-full text-left">
-            <thead className="text-[12px] tracking-[0.08em] text-white/50">
+            <thead className="tech text-[12px] text-white/50">
               <tr className="border-b border-white/10">
                 <th className="px-5 py-3 font-medium">LAP</th>
                 <th className="px-3 py-3 font-medium">TIME</th>
@@ -123,7 +142,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                 <tr
                   key={l.id}
                   onClick={() => go({ name: "lap", lapId: l.id, sessionId })}
-                  className="num cursor-pointer border-b border-white/5 text-[15px] hover:bg-white/5"
+                  className="num cursor-pointer border-b border-white/5 text-[15px] transition hover:bg-accent/[0.06]"
                 >
                   <td className="px-5 py-3 text-white/70">{l.lapNo}</td>
                   <td className={`px-3 py-3 font-bold ${best?.id === l.id ? "text-[#c084fc]" : !l.isValid ? "text-white/40" : ""}`}>
@@ -178,5 +197,90 @@ export function SessionView({ sessionId }: { sessionId: number }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function KindPicker({ session, onChange }: { session: SessionSummary; onChange: () => void }) {
+  const current = session.kind;
+  const guessed = sessionKind({ ...session, kind: null });
+  const set = async (kind: SessionKind | null) => {
+    await api.setSessionKind(session.id, kind);
+    onChange();
+  };
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-4">
+      <span className="tech text-[13px] text-white/50">Session type</span>
+      <div className="flex overflow-hidden rounded-[10px] border border-white/10 bg-black/40">
+        <button
+          onClick={() => set(null)}
+          title={`Let ApexNorth decide (currently ${kindInfo(guessed).label})`}
+          className={`tech border-r border-white/10 px-4 py-2 text-[13px] ${current == null ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
+        >
+          Auto
+        </button>
+        {KINDS.map((k) => {
+          const active = sessionKind(session) === k.value;
+          return (
+            <button
+              key={k.value}
+              onClick={() => set(k.value)}
+              className="tech border-r border-white/10 px-4 py-2 text-[13px] last:border-r-0"
+              style={
+                active
+                  ? { color: k.color, background: `color-mix(in srgb, ${k.color} 14%, transparent)`, boxShadow: `inset 0 0 0 1.5px ${k.color}` }
+                  : { color: "rgba(255,255,255,0.6)" }
+              }
+            >
+              {k.label}
+            </button>
+          );
+        })}
+      </div>
+      {current == null && <span className="text-[12px] text-white/40">Guessed. Pick one to tag it.</span>}
+    </div>
+  );
+}
+
+/** Your pace at this track split by session type: clean time-trial pace vs race pace with traffic and wear. */
+function TrackComparison({ session, all }: { session: SessionSummary; all: SessionSummary[] }) {
+  if (session.trackId == null) return null;
+  const here = all.filter((s) => s.trackId === session.trackId);
+  const rows = KINDS.map((k) => {
+    const ss = here.filter((s) => sessionKind(s) === k.value);
+    const bests = ss.map((s) => s.bestMs).filter((v): v is number => v != null);
+    const avgs = ss.map((s) => s.avgMs).filter((v): v is number => v != null);
+    return {
+      ...k,
+      sessions: ss.length,
+      best: bests.length ? Math.min(...bests) : null,
+      avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null,
+    };
+  });
+  const overall = rows.map((r) => r.best).filter((v): v is number => v != null);
+  const ref = overall.length ? Math.min(...overall) : null;
+  if (rows.filter((r) => r.sessions > 0).length < 1) return null;
+  return (
+    <>
+      <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Your pace here by session type</h2>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {rows.map((r) => (
+          <div
+            key={r.value}
+            className={`rounded-[12px] border bg-black/40 p-4 ${r.sessions ? "" : "opacity-40"}`}
+            style={{ borderColor: `color-mix(in srgb, ${r.color} ${r.sessions ? 70 : 25}%, transparent)` }}
+          >
+            <div className="tech flex items-center justify-between text-[13px]" style={{ color: r.color }}>
+              {r.label}
+              <span className="text-[11px] text-white/40">{r.sessions ? `${r.sessions}×` : "none yet"}</span>
+            </div>
+            <div className="num mt-2 text-[24px] font-bold leading-none">{lapTime(r.best)}</div>
+            <div className="mt-2 flex justify-between text-[12px] text-white/50">
+              <span>avg {lapTime(r.avg != null ? Math.round(r.avg) : null)}</span>
+              {r.best != null && ref != null && r.best !== ref && <span className="num text-[#ff9f1a]">+{((r.best - ref) / 1000).toFixed(3)}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

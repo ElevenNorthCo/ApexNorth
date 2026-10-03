@@ -36,13 +36,15 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 ## Features
 
 ### Live dashboard
-- Position, lap and total laps.
-- A large gear indicator with RPM, suggested shift, and speed in km/h or mph.
-- A 16-LED shift light bar driven by the car's own rev alert range. It flashes at the limiter.
+- A neon ApexNorth layout (its own design, not a Victory clone), scaled to any window size.
+- Live race position (P3 / 16), lap of total, and laps left.
+- A large gear indicator with RPM arcs, suggested shift, and speed in km/h or mph.
+- A 12-LED shift light bar driven by the car's own rev alert range. It flashes at the limiter.
+- Status chips for TCS, ASM, pit window, box, ahead of best, hot tyres, wheelspin and lock-ups.
 - Current, last and best lap times, with a **live delta** to your best lap measured by distance.
-- Tyre temperatures for all four corners, colour-coded cold / optimal / hot.
+- Tyre temperatures for all four corners around a top-down car, with temperature bars and cold / optimal / hot states.
 - Brake and throttle readouts with fill bars.
-- Fuel: percentage left, % used per lap, laps of fuel left, and pit window status.
+- Fuel: a fill bar, % used per lap, laps of fuel left, finish margin, and pit window status.
 - Side indicator LEDs: TCS, ASM, pit window open, box now, ahead of best, tyres hot, wheelspin and lock-up.
 - A connection status readout (`SEARCHING`, `LIVE 60HZ`, `SIGNAL LOST`) and a clock.
 - The screen stays awake while data is live.
@@ -56,7 +58,9 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ### Session recording & history
 - Every lap is recorded automatically at 30 Hz and saved locally in SQLite.
-- Sessions are grouped by track and date, with a track outline thumbnail, lap count, best lap and car.
+- The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car make and model, laps, best and average lap, and the delta to your previous best there.
+- **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
+- Track photos come from `src/assets/tracks/` (one per venue; the list of file names is in the README there). A venue without one gets generated art.
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
 - **Pit detection:** a refuel or a stop flags the lap as a pit lap and keeps it out of best-lap records.
 - Invalid laps (a rewind or reset, or a lap you joined mid-way) are flagged and excluded.
@@ -89,7 +93,7 @@ Callouts are spoken offline with Piper. The engineer follows the session in real
 | Wheelspin & lock-ups | "Wheelspin on exit." / "You're consistently locking the fronts. Ease the brake pressure." |
 | Incidents | "You've had a spin." / "Take it easy for the next couple of corners." |
 | Race start | "Lights out. Go, go, go!" |
-| Grid position | "You start P5 of 16." |
+| Race position | "You start P5 of 16." / "Great start! Up one place to P4." / "Into a podium spot, P3!" / "Lost three places there, P5. Breathe, reset." / "Strong lap. Keep that up and you'll reel in P2." |
 
 How it stays useful rather than noisy:
 - **Anti-nag memory:** each fact is remembered when spoken. It isn't repeated unless it gets worse, changes, or enough time has passed.
@@ -272,14 +276,14 @@ The tests cover:
 - [x] GT7 Salsa20 decryption and packet parsing (A / B / ~), with unit tests
 - [x] UDP link with heartbeat, auto-discovery (LAN sweep + broadcast) and variant fallback
 - [x] Three-step connection wizard, remembered IP and auto-connect
-- [x] Live dashboard modelled on Victory's layout: gear, RPM, speed, shift lights, lap times, delta, tyres, fuel, inputs, clock
+- [x] Live dashboard (ApexNorth neon layout): gear, RPM, speed, shift lights, lap times, delta, tyres, fuel, inputs, clock
 - [x] Demo mode simulator
 - [x] **Milestone:** live data from a real PS5 at 60 Hz ✔
 
 ### ✅ Phase 2: Record, history & playback
 - [x] Lap engine: official lap times, 30 Hz samples, 5 sectors, pit and invalid detection
 - [x] SQLite storage, track fingerprinting, renamable tracks
-- [x] Activity feed grouped by track and date, with track outlines
+- [x] Activity feed with track outlines
 - [x] Session view with sector table and best laps/sectors highlighted
 - [x] Lap analysis: track map, playback, compare against any lap, synced charts
 - [x] **Milestone:** drive a session, then replay and compare laps ✔
@@ -302,8 +306,15 @@ The tests cover:
 - [x] Estimated tyre degradation, combined with fuel for the pit plan
 - [x] Context-aware timing, priorities, anti-nag memory and phrase variation
 - [x] Late-lap "box this lap" reminder
-- [x] Live race position investigated: GT7's packet has no live position or data on other cars, so position calls stay grid-only
+- [x] Live race position: confirmed live on PS5. Places gained or lost are called once settled (pass and re-pass is one call), with podium, lead and start-specific lines, calm wording after a spin, and chase encouragement while holding a place
 - [ ] **Milestone:** a full live race where the engineer feels involved without being annoying
+
+### ✅ Phase 3.6: ApexNorth look & race position
+- [x] New neon UI: dashboard, top toolbar, Activity cards, Session, Settings and Connect redesigned
+- [x] Country flags; track photos per venue (drop-in folder)
+- [x] Session types (Practice / Qualifying / Race / Time Trial) with filters and pace comparison per type
+- [x] Race position callouts: gains, losses, lead, podium, start summary, chase encouragement
+- [ ] Track photos for all 41 venues
 
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
@@ -337,7 +348,8 @@ The tests cover:
   - Nordschleife Tourist, Nürburgring Endurance II and Fuji (Short) drive the same line as their sister layouts, so they are named as those. Rename the track to fix that; the name sticks.
   - Anything unrecognised is named "Track N (x.xx km)" until you rename it.
 - **Cars** that are newer than the bundled list show as `Car #<code>`. Run `scripts/build_gt7_data.py` to refresh it.
-- **Position:** GT7 only sends grid position before the race, so POS shows the starting slot. The packet carries no live position and no data on other cars, so ApexNorth won't announce overtakes until a reliable source exists.
+- **Position:** race position comes from the packet's `pre_race_position` field, which updates live during races on PS5. GT7 sends no data on other cars, so there are no gaps to the car ahead or behind. A change must hold for half a second before it counts, and about three seconds before it's announced.
+- **Performance points (PP):** GT7 doesn't send PP or tuning data, so it can't be shown per session.
 - **Tyre wear:** GT7 sends no tyre wear data. Degradation is estimated from the lap-time trend and stated with honest language, never as a percentage.
 - **Pit entry:** track layouts differ and GT7 doesn't say where the pit lane is, so the "box this lap" reminder comes at about 75–90% of the lap.
 - **Voice latency:** the Python Piper CLI loads the model for each new phrase. This will be fixed in Phase 4.

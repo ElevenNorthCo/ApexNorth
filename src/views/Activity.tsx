@@ -1,104 +1,174 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type SessionSummary } from "../lib/api";
-import { carName, lapTime, shortDate, timeOfDay } from "../lib/format";
+import { api, type SessionKind, type SessionSummary } from "../lib/api";
+import { carName, delta, lapTime, shortDate, timeOfDay } from "../lib/format";
+import { KINDS, carClass, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
 import { useStore } from "../lib/store";
 import { TrackOutline } from "../components/TrackOutline";
+import { TrackArt } from "../components/Art";
+import { Flag } from "../components/Flag";
 import { ChevronRight } from "../components/icons";
-
-interface Group {
-  key: string;
-  trackName: string;
-  date: number;
-  outline: [number, number][];
-  sessions: SessionSummary[];
-}
 
 export function Activity() {
   const go = useStore((s) => s.go);
   const version = useStore((s) => s.lapsVersion);
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<SessionKind | "all">("all");
 
   useEffect(() => {
     api.listSessions().then(setSessions).catch((e) => setError(String(e)));
   }, [version]);
 
-  const groups = useMemo(() => {
-    const out: Group[] = [];
-    for (const s of sessions ?? []) {
-      const day = new Date(s.startedAt).toDateString();
-      const key = `${s.trackId ?? "?"}|${day}`;
-      const last = out[out.length - 1];
-      if (last?.key === key) last.sessions.push(s);
-      else
-        out.push({
-          key,
-          trackName: s.trackName ?? "Unknown track",
-          date: s.startedAt,
-          outline: s.outline,
-          sessions: [s],
-        });
-    }
+  /** Best lap compared with your previous best at the same track (sessions arrive newest first). */
+  const improvement = useMemo(() => {
+    const out = new Map<number, number>();
+    const all = sessions ?? [];
+    all.forEach((s, i) => {
+      if (s.bestMs == null || s.trackId == null) return;
+      const earlier = all.slice(i + 1).filter((e) => e.trackId === s.trackId && e.bestMs != null);
+      if (earlier.length) out.set(s.id, s.bestMs - Math.min(...earlier.map((e) => e.bestMs!)));
+    });
     return out;
   }, [sessions]);
 
+  const shown = (sessions ?? []).filter((s) => filter === "all" || sessionKind(s) === filter);
+
   return (
-    <div className="scroll-thin h-full overflow-y-auto bg-panel pb-32">
-      <header className="px-8 pb-6 pt-10">
-        <h1 className="text-[32px] font-semibold tracking-tight">Your Activity</h1>
-      </header>
+    <div className="scroll-thin h-full overflow-y-auto pb-16">
+      <div className="mx-auto max-w-[1400px] px-8">
+        <header className="flex flex-wrap items-end justify-between gap-6 pb-6 pt-8">
+          <div>
+            <h1 className="brand text-[52px] leading-none">
+              YOUR <span className="text-accent drop-shadow-[0_0_12px_rgba(57,255,122,0.5)]">ACTIVITY</span>
+            </h1>
+            <div className="tech mt-2 text-[14px] italic tracking-[0.3em] text-white/60">Recent sessions, laps and races</div>
+          </div>
+          <div className="flex overflow-hidden rounded-[12px] border border-white/10 bg-black/40">
+            {[{ value: "all" as const, label: "All", color: "#39ff7a" }, ...KINDS].map((k) => {
+              const active = filter === k.value;
+              return (
+                <button
+                  key={k.value}
+                  onClick={() => setFilter(k.value)}
+                  className="tech border-r border-white/10 px-6 py-3 text-[14px] font-medium transition last:border-r-0"
+                  style={
+                    active
+                      ? { color: k.color, background: `color-mix(in srgb, ${k.color} 12%, transparent)`, boxShadow: `inset 0 0 0 1.5px ${k.color}, 0 0 12px color-mix(in srgb, ${k.color} 35%, transparent)` }
+                      : { color: "rgba(255,255,255,0.7)" }
+                  }
+                >
+                  {k.label}
+                </button>
+              );
+            })}
+          </div>
+        </header>
 
-      {error && <p className="px-8 text-red-300">{error}</p>}
-      {sessions && sessions.length === 0 && (
-        <div className="mx-8 rounded-2xl border border-white/10 p-8 text-center text-muted">
-          No sessions yet. Every lap you drive is recorded automatically. Connect and get on track.
+        {error && <p className="text-red-300">{error}</p>}
+        {sessions && shown.length === 0 && (
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-10 text-center text-muted">
+            {sessions.length === 0
+              ? "No sessions yet. Every lap you drive is recorded automatically. Connect and get on track."
+              : "No sessions of this type yet. Open a session to set whether it was practice, qualifying, a race or a time trial."}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {shown.map((s) => (
+            <SessionCard key={s.id} s={s} gain={improvement.get(s.id)} onOpen={() => go({ name: "session", sessionId: s.id })} />
+          ))}
         </div>
-      )}
-
-      <div className="mx-auto max-w-4xl">
-        {groups.map((g) => (
-          <section key={g.key} className="mb-3 overflow-hidden bg-[#232634] sm:rounded-2xl">
-            <div className="flex items-center justify-between bg-gradient-to-r from-[#2c3044] to-[#232634] px-7 py-5">
-              <div>
-                <h2 className="text-[24px] font-bold leading-tight">{g.trackName}</h2>
-                <div className="mt-1 text-[16px] text-white/70">{shortDate(g.date)}</div>
-              </div>
-              <TrackOutline points={g.outline} size={76} />
-            </div>
-            {g.sessions.map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => go({ name: "session", sessionId: s.id })}
-                className="flex w-full items-center border-t border-white/5 px-7 py-4 text-left transition hover:bg-white/5"
-              >
-                <div className="grid flex-1 grid-cols-[90px_150px_1fr] gap-y-1">
-                  {i === 0 && (
-                    <>
-                      <Label>LAPS</Label>
-                      <Label>BEST</Label>
-                      <Label>CAR</Label>
-                    </>
-                  )}
-                  <Value>{s.lapCount}</Value>
-                  <Value>{lapTime(s.bestMs)}</Value>
-                  <Value className="truncate">{carName(s.carCode, s.carName).toUpperCase()}</Value>
-                  <div className="col-span-3 text-[15px] text-white/55">
-                    {s.totalLaps > 0 ? "Race" : "Practice"} · GT7 · {timeOfDay(s.startedAt)}
-                  </div>
-                </div>
-                <ChevronRight className="text-white/50" />
-              </button>
-            ))}
-          </section>
-        ))}
       </div>
     </div>
   );
 }
 
-const Label = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-[13px] tracking-[0.08em] text-white/55">{children}</div>
-);
-const Value = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div className={`num text-[20px] font-medium ${className}`}>{children}</div>
-);
+function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: number | undefined; onOpen: () => void }) {
+  const kind = kindInfo(sessionKind(s));
+  const [title, subtitle] = trackTitle(s);
+  const fullCar = carName(s.carCode, s.carName);
+  const [maker, model] = splitCar(fullCar);
+  const cls = carClass(s.carName);
+  const c = kind.color;
+  return (
+    <button
+      onClick={onOpen}
+      className="group relative flex h-[176px] w-full items-stretch overflow-hidden rounded-[16px] text-left transition hover:brightness-110"
+      style={{
+        border: `1.5px solid ${c}`,
+        background: "linear-gradient(90deg, rgba(10,16,15,0.95), rgba(6,9,8,0.95))",
+        boxShadow: `0 0 16px color-mix(in srgb, ${c} 30%, transparent), inset 4px 0 0 ${c}`,
+      }}
+    >
+      <span className="absolute right-0 top-0 h-0 w-0 border-l-[22px] border-t-[22px] border-l-transparent" style={{ borderTopColor: c }} />
+
+      <TrackArt venue={s.venue} outline={s.outline} className="w-[230px] shrink-0 max-md:hidden" />
+
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-5 pl-6 pr-3">
+        <div>
+          <div className="flex items-center gap-3">
+            <Flag country={s.country} height={20} />
+            <h2 className="tech truncate text-[24px] font-bold leading-none tracking-[0.03em]">{title}</h2>
+          </div>
+          {subtitle && <div className="tech mt-1.5 truncate pl-[1px] text-[15px] text-white/60">{subtitle}</div>}
+        </div>
+        <div>
+          <div className="text-[16px] text-white/90">{shortDate(s.startedAt)}</div>
+          <div className="text-[15px] text-white/55">
+            <span style={{ color: c }}>{kind.label}</span> · GT7 · {timeOfDay(s.startedAt)}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex w-[130px] shrink-0 items-center justify-center max-xl:hidden">
+        <TrackOutline points={s.outline} size={104} strokeWidth={4} stroke="white" />
+      </div>
+
+      <div className="my-5 flex w-[250px] shrink-0 flex-col justify-center gap-2 border-l border-white/10 px-6 max-lg:hidden">
+        <div className="tech text-[12px] text-white/55">Car</div>
+        <div className="leading-tight">
+          <div className="tech truncate text-[14px] text-white/70">{maker}</div>
+          <div className="tech line-clamp-2 text-[17px] font-semibold leading-snug">{model || maker}</div>
+        </div>
+        <div className="flex gap-1.5">
+          {cls && <Chip color="#b44cff">{cls}</Chip>}
+          <Chip color={c}>{kind.label}</Chip>
+        </div>
+      </div>
+
+      <div className="my-5 grid w-[330px] shrink-0 grid-cols-[1fr_1.3fr] content-center gap-x-5 gap-y-4 border-l border-white/10 px-6">
+        <Stat label="Laps">{s.lapCount}</Stat>
+        <Stat label="Best Lap" color="#39ff7a" big>
+          {lapTime(s.bestMs)}
+        </Stat>
+        <Stat label="Avg Lap">{lapTime(s.avgMs != null ? Math.round(s.avgMs) : null)}</Stat>
+        <Stat label="Delta" color={gain == null ? undefined : gain <= 0 ? "#39ff7a" : "#ff9f1a"}>
+          {gain == null ? "—" : delta(gain)}
+        </Stat>
+      </div>
+
+      <div className="my-5 flex w-[56px] shrink-0 items-center justify-center border-l border-white/10" style={{ color: c }}>
+        <ChevronRight width={32} height={32} className="transition group-hover:translate-x-1" />
+      </div>
+    </button>
+  );
+}
+
+function Stat({ label, children, color, big }: { label: string; children: React.ReactNode; color?: string; big?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="tech text-[12px] text-white/55">{label}</div>
+      <div className={`num mt-1 truncate font-bold leading-none ${big ? "text-[24px]" : "text-[21px]"}`} style={{ color }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Chip({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span className="tech rounded-[5px] border px-2 py-[2px] text-[11px] font-semibold" style={{ color, borderColor: `color-mix(in srgb, ${color} 70%, transparent)` }}>
+      {children}
+    </span>
+  );
+}

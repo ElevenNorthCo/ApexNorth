@@ -2,7 +2,7 @@
 //! candidate calls; the director decides which are spoken and when.
 
 use std::collections::VecDeque;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::director::{self, Call, Director, EngineerConfig, Topic};
 use super::live::{LiveCtx, SlipWatch, TyreWatch};
@@ -15,6 +15,15 @@ use crate::session::models::{CompletedLap, InvalidReason, SECTOR_COUNT};
 use crate::session::strategy::{PitDriver, PitPlan, TYRE_CONFIDENCE};
 use crate::session::tyres::TyrePerformance;
 use crate::settings::ChatterLevel::{self, Chatty, CrewChief, Minimal, Normal};
+
+/// A new race position must hold this long before it's announced, so a
+/// pass and re-pass becomes one call about the net change.
+const POSITION_SETTLE: Duration = Duration::from_secs(3);
+/// Opening shuffle: wait longer and sum it up as the start.
+const START_PHASE: Duration = Duration::from_secs(25);
+const START_SETTLE: Duration = Duration::from_secs(6);
+/// Laps without a position change before a "holding" encouragement.
+const HOLD_LAPS: u8 = 3;
 
 /// The late-lap stretch where a "box this lap" reminder is given.
 const PRE_PIT: std::ops::Range<f32> = 0.75..0.9;
@@ -54,6 +63,11 @@ pub struct Engineer {
     window_open_said: bool,
     box_called_lap: Option<i16>,
     prepit_lap: Option<i16>,
+    // Race position memory: last announced, latest confirmed, when it changed.
+    pos_said: Option<i16>,
+    pos_now: Option<i16>,
+    pos_changed_at: Option<Instant>,
+    laps_since_pos_change: u8,
     /// Lap seen in the live state, and the fuel level when it began.
     live_lap: Option<i16>,
     lap_start_fuel: Option<f32>,
@@ -80,6 +94,12 @@ impl Engineer {
             EngineEvent::PositionChanged { to } => {
                 calls.push(Call::new(Topic::Position, Normal, Priority::Low, "grid.slot", format!("Grid slot P{to}.")));
             }
+            EngineEvent::RacePositionChanged { from, to } => {
+                self.pos_said.get_or_insert(*from);
+                self.pos_now = Some(*to);
+                self.pos_changed_at = Some(now);
+                self.laps_since_pos_change = 0;
+            }
             EngineEvent::SectorCompleted(s) => calls.extend(self.sector_calls(s, level)),
             EngineEvent::Incident(i) => {
                 self.incident_at = Some(now);
@@ -105,6 +125,7 @@ impl Engineer {
                 calls.extend(self.fuel_calls(ctx, level));
                 calls.extend(self.pit_calls(lap, ctx));
                 calls.extend(self.tyre_deg_calls(lap, ctx));
+                calls.extend(self.position_hold_call(lap, ctx));
                 self.pace = LapPace::default();
             }
             _ => {}
@@ -144,6 +165,7 @@ impl Engineer {
         calls.extend(self.tyres.update(&cx, &mut self.phrases));
         calls.extend(self.slip.update(&cx, &mut self.phrases));
         calls.extend(self.pre_pit_call(s));
+        calls.extend(self.position_change_call(s, now));
         let mut out = self.director.submit(calls, cfg, now);
         out.extend(self.director.release(director::calm(s), now));
         out
@@ -266,7 +288,12 @@ impl Engineer {
             out.push(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "lap.time", text));
         }
         if ctx.laps_remaining == Some(1) {
-            out.push(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "lap.final", "Final lap. Bring it home."));
+            let text = match self.pos_now.or(self.pos_said) {
+                Some(1) => "Final lap. You're leading, bring it home.".to_string(),
+                Some(p) => format!("Final lap. You're P{p}, bring it home."),
+                None => "Final lap. Bring it home.".to_string(),
+            };
+            out.push(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "lap.final", text));
         }
         out
     }
@@ -492,6 +519,111 @@ impl Engineer {
 
     /// Late in a lap where the plan says pit, remind the driver before the
     /// pit entry (whose position we don't know).
+    /// Announce a settled race position change: the net gain or loss since
+    /// the last call, cheering gains and steadying the driver after losses.
+    fn position_change_call(&mut self, s: &LiveState, now: Instant) -> Option<Call> {
+        let (said, cur, at) = (self.pos_said?, self.pos_now?, self.pos_changed_at?);
+        if cur == said {
+            self.pos_changed_at = None;
+            return None;
+        }
+        let at_start = self.race_start_at.is_some_and(|t| at.saturating_duration_since(t) < START_PHASE);
+        if now.saturating_duration_since(at) < if at_start { START_SETTLE } else { POSITION_SETTLE } {
+            return None;
+        }
+        self.pos_said = Some(cur);
+        self.pos_changed_at = None;
+        let gained = said - cur;
+        let n = gained.unsigned_abs() as usize;
+        let count = if word(n).is_empty() { n.to_string() } else { word(n).to_string() };
+        let places = if n == 1 { "one place".to_string() } else { format!("{count} places") };
+        let last_laps = s.laps_remaining.is_some_and(|l| l <= 1);
+        let after_incident = self.incident_at.is_some_and(|t| now.saturating_duration_since(t) < Duration::from_secs(25));
+        let p = &mut self.phrases;
+        let (level, text) = if gained > 0 {
+            if cur == 1 {
+                (Minimal, p.pick("pos.lead", &["You're leading! P1. Keep it clean.", "That's the lead! P1. Head down, eyes forward.", "P1! You're out front now. Smooth and steady."]))
+            } else if at_start {
+                (Normal, format!("Great start! Up {places} to P{cur}."))
+            } else if cur <= 3 && said > 3 {
+                (Minimal, format!("Into a podium spot, P{cur}! Keep pushing."))
+            } else if last_laps {
+                (Normal, format!("Up to P{cur}! Hold it to the flag."))
+            } else if n >= 2 {
+                (Normal, p.pick("pos.gain.many", &[&format!("Brilliant! {} gained, up to P{cur}.", capitalize(&places)), &format!("Up {places} to P{cur}. You're flying.")]))
+            } else {
+                (
+                    Normal,
+                    p.pick(
+                        "pos.gain",
+                        &[
+                            &format!("Nice move. P{cur}."),
+                            &format!("Great pass. Up to P{cur}. Next car's the target."),
+                            &format!("Good job, P{cur}. Go get the next one."),
+                            &format!("P{cur}. That's how it's done."),
+                        ],
+                    ),
+                )
+            }
+        } else if said == 1 {
+            (Minimal, format!("Lost the lead, P{cur}. Stay with them, it's not over."))
+        } else if at_start {
+            (Normal, format!("Tough start, down to P{cur}. Long way to go, settle in."))
+        } else if after_incident {
+            (Normal, format!("Lost {places} there, P{cur}. Breathe, reset. Plenty of race left."))
+        } else if said <= 3 && cur > 3 {
+            (Normal, format!("Dropped off the podium, P{cur}. Plenty of fight left."))
+        } else if last_laps {
+            (Normal, format!("P{cur}. Keep it clean and bring it home."))
+        } else if n >= 2 {
+            (Normal, p.pick("pos.loss.many", &[&format!("Down {places} to P{cur}. Stay calm, clean laps will bring them back."), &format!("P{cur}. Shake it off. Your pace is still good.")]))
+        } else {
+            (
+                Normal,
+                p.pick(
+                    "pos.loss",
+                    &[
+                        &format!("Lost one, P{cur}. Stay calm, you'll get it back."),
+                        &format!("P{cur}. No panic, keep your lines clean."),
+                        &format!("Dropped to P{cur}. Stick with them, chances will come."),
+                    ],
+                ),
+            )
+        };
+        Some(Call::new(Topic::Position, level, Priority::Normal, "pos.change", text))
+    }
+
+    /// After a few laps in the same place: keep the driver chasing, or calm
+    /// out front.
+    fn position_hold_call(&mut self, lap: &CompletedLap, ctx: &LapContext) -> Option<Call> {
+        let pos = self.pos_now.or(self.pos_said)?;
+        if ctx.total_laps <= 0 || ctx.laps_remaining.is_some_and(|l| l <= 1) {
+            return None;
+        }
+        self.laps_since_pos_change = self.laps_since_pos_change.saturating_add(1);
+        if self.laps_since_pos_change < HOLD_LAPS {
+            return None;
+        }
+        let best = [ctx.reference_before, ctx.session_best_before].into_iter().flatten().min();
+        let strong = lap.is_valid && best.is_some_and(|b| lap.time_ms <= b + 300);
+        let ahead = pos - 1;
+        let text = if pos == 1 {
+            self.phrases.pick("pos.hold.lead", &["Still leading. Smooth and steady.", "P1 and in control. Keep that rhythm."])
+        } else if strong {
+            self.phrases.pick(
+                "pos.hold.chase",
+                &[&format!("Strong lap. Keep that up and you'll reel in P{ahead}."), &format!("That pace will catch P{ahead}. Keep pushing.")],
+            )
+        } else {
+            self.phrases.pick(
+                "pos.hold",
+                &[&format!("Holding P{pos}. Stay patient, P{ahead} is the target."), &format!("Solid, P{pos}. Clean laps, the next car will make a mistake.")],
+            )
+        };
+        self.laps_since_pos_change = 0;
+        Some(Call::new(Topic::Position, Chatty, Priority::Normal, "pos.hold", text).cooldown(150))
+    }
+
     fn pre_pit_call(&mut self, s: &LiveState) -> Option<Call> {
         let p = self.plan.as_ref()?;
         let lap = s.lap?;

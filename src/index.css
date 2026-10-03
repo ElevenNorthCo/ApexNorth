@@ -3,21 +3,26 @@
 @theme {
   --font-sans: "Inter Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Squared, technical face for labels, tabs and headings. */
+  --font-tech: "Chakra Petch", "Inter Variable", sans-serif;
+  /* Wide italic for the wordmark and big titles. */
+  --font-brand: "Saira Variable", "Inter Variable", sans-serif;
 
-  --color-ink: #000000;
-  --color-panel: #1c1f2a;
-  --color-panel-2: #252935;
-  --color-line: #343949;
-  --color-muted: #9aa0b4;
-  --color-accent: #b18cf2;
+  --color-ink: #040706;
+  --color-panel: #080c0b;
+  --color-panel-2: #0e1413;
+  --color-line: #1d2926;
+  --color-muted: #8b9b96;
+  --color-accent: #39ff7a;
+  --color-accent-2: #1fd65f;
 
-  --color-pos: #4a9eff;
-  --color-lap: #a855f7;
-  --color-laps: #f59e0b;
-  --color-laptime: #3fb8d8;
-  --color-brk: #ef4444;
-  --color-thr: #4caf50;
-  --color-fuel: #f2e14c;
+  --color-pos: #1ea7ff;
+  --color-lap: #b44cff;
+  --color-laps: #ff9f1a;
+  --color-laptime: #1fa8ff;
+  --color-brk: #ff3b4a;
+  --color-thr: #39ff7a;
+  --color-fuel: #ffc81a;
 }
 
 html,
@@ -25,12 +30,21 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #000;
+  background: var(--color-ink);
   color: #fff;
   font-family: var(--font-sans);
   overflow: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
+}
+
+/* App backdrop: near-black with a faint green glow and racing diagonals. */
+.an-bg {
+  background-color: var(--color-ink);
+  background-image:
+    radial-gradient(1200px 500px at 0% 0%, rgba(57, 255, 122, 0.07), transparent 60%),
+    radial-gradient(900px 500px at 100% 100%, rgba(30, 167, 255, 0.05), transparent 60%),
+    repeating-linear-gradient(-55deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 22px);
 }
 
 /* Slashed-zero digital look for numbers. */
@@ -40,11 +54,24 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+.tech {
+  font-family: var(--font-tech);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand {
+  font-family: var(--font-brand);
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
 .scroll-thin::-webkit-scrollbar {
   width: 6px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #343949;
+  background: #1d2926;
   border-radius: 3px;
 }
 
@@ -57,11 +84,23 @@ body,
   animation: blink 0.18s steps(1) infinite;
 }
 
+@keyframes pulse-dot {
+  50% {
+    box-shadow: 0 0 0 4px rgba(57, 255, 122, 0);
+  }
+  0% {
+    box-shadow: 0 0 0 0 rgba(57, 255, 122, 0.6);
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-out infinite;
+}
+
 /* uPlot dark theme tweaks */
 .uplot,
 .u-legend {
   font-family: var(--font-mono);
-  color: #9aa0b4;
+  color: #8b9b96;
 }
 .u-legend {
   display: none;

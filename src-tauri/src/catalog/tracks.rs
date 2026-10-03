@@ -315,6 +315,10 @@ impl Catalog {
         &self.layouts
     }
 
+    pub fn by_id(&self, id: &str) -> Option<&Layout> {
+        self.layouts.iter().find(|l| l.id == id)
+    }
+
     pub fn by_name(&self, name: &str) -> Option<&Layout> {
         self.layouts.iter().find(|l| l.name.eq_ignore_ascii_case(name.trim()))
     }
