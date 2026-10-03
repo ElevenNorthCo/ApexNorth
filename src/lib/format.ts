@@ -39,8 +39,10 @@ export function speed(kph: number, units: "metric" | "imperial"): number {
   return Math.round(units === "imperial" ? kph * 0.621371 : kph);
 }
 
-export function carName(code: number): string {
-  return `Car #${code}`;
+/** The backend's catalog name, else the raw code (a car newer than the catalog). */
+export function carName(code: number, name?: string | null): string {
+  if (name) return name;
+  return code > 0 ? `Car #${code}` : "Unknown car";
 }
 
 export function clock(d = new Date()): string {

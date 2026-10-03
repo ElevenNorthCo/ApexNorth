@@ -60,7 +60,8 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
 - **Pit detection:** a refuel or a stop flags the lap as a pit lap and keeps it out of best-lap records.
 - Invalid laps (a rewind or reset, or a lap you joined mid-way) are flagged and excluded.
-- Tracks are fingerprinted automatically, because GT7 doesn't send a track ID. You can rename them.
+- **Real track and car names.** GT7 doesn't send a track ID, so ApexNorth recognises the track from the line you drove. It checks the lap against a built-in catalog of all 121 GT7 layouts, including reverse layouts and chicane / no-chicane variants. Cars are named from the full GT7 car list (584 cars), e.g. "Porsche 911 GT3 RS (992) '22".
+- A track the catalog can't place gets a placeholder name. Rename it from the session page, where the box suggests every GT7 track.
 
 ### Lap analysis & playback
 - A track map showing the track surface, your racing line, sector markers and the car position, with zoom that follows the car and an overview mini-map.
@@ -223,6 +224,9 @@ src-tauri/src/
     incidents.rs         spin detection
     models.rs            Sample, CompletedLap, InvalidReason, sector math
   storage/mod.rs         SQLite: tracks, sessions, laps
+  catalog/
+    cars.rs              car code → name (data/gt7_cars.csv)
+    tracks.rs            all GT7 layouts + recognising a lap's track (data/gt7_tracks.json)
   engineer/
     rules.rs             decision layer: events → candidate calls
     live.rs              tyre temperature and wheel-slip watchers
@@ -251,6 +255,7 @@ The tests cover:
 - lap engine timing, live sectors, and lap validity (spikes, dropouts, late packets, real resets)
 - a full simulated race through the engine and engineer, at every chatter level
 - SQLite storage
+- car names, and track recognition for every layout with a reference line (forward, reverse, chicane variants, real PS5 captures)
 - fuel strategy: fuel off, no stop, one stop, multi-stop, the window moving, box now
 - tyre degradation, spin detection and the combined pit plan
 - chatter levels, category toggles, cooldowns and priority
@@ -303,8 +308,9 @@ The tests cover:
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
 - [ ] Bundle Piper and a default voice as a Tauri sidecar
-- [ ] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01")
-- [ ] Built-in track database (auto-name tracks, real outlines, track-specific sectors)
+- [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars
+- [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch
+- [ ] Track database extras: real outlines and track-specific sectors
 - [ ] Multiple dashboard layouts, plus speed/G-force/steering widgets
 - [ ] Pre-race strategy briefing (fuel needed, planned stops)
 - [ ] GitHub Actions builds for macOS, Windows and Linux, plus auto-update
@@ -325,8 +331,12 @@ The tests cover:
 ---
 
 ## Known limitations
-- **Tracks:** GT7 doesn't report a track ID. Tracks are recognised by their start/finish position and length, and named "Track N (x.xx km)" until you rename them.
-- **Cars** show as `Car #<code>` until the car database lands (Phase 4).
+- **Tracks:** GT7 doesn't report a track ID, so tracks are recognised from the lap's line.
+  - 8 of the 121 layouts have no reference line yet. Short layouts (Suzuka East, Nürburgring Sprint, Red Bull Ring Short Track, Autopolis Short Course) are matched by venue and length.
+  - Barcelona Rallycross can't be recognised yet.
+  - Nordschleife Tourist, Nürburgring Endurance II and Fuji (Short) drive the same line as their sister layouts, so they are named as those. Rename the track to fix that; the name sticks.
+  - Anything unrecognised is named "Track N (x.xx km)" until you rename it.
+- **Cars** that are newer than the bundled list show as `Car #<code>`. Run `scripts/build_gt7_data.py` to refresh it.
 - **Position:** GT7 only sends grid position before the race, so POS shows the starting slot. The packet carries no live position and no data on other cars, so ApexNorth won't announce overtakes until a reliable source exists.
 - **Tyre wear:** GT7 sends no tyre wear data. Degradation is estimated from the lap-time trend and stated with honest language, never as a percentage.
 - **Pit entry:** track layouts differ and GT7 doesn't say where the pit lane is, so the "box this lap" reminder comes at about 75–90% of the lap.
@@ -338,6 +348,8 @@ The tests cover:
 - Feature set inspired by [Victory: Race Engineer for GT7](https://victorydash.io).
 - Protocol research: [Nenkai/PDTools](https://github.com/Nenkai/PDTools), [Bornhall/gt7telemetry](https://github.com/Bornhall/gt7telemetry), and the [GTPlanet telemetry thread](https://www.gtplanet.net/forum/threads/overview-of-gt7-telemetry-software.418011/).
 - Voice: [Piper](https://github.com/rhasspy/piper).
+- Car list: [ddm999/gt7info](https://github.com/ddm999/gt7info) (MIT-0).
+- Track catalog and reference lines: [jbhoorasingh/gt7-datalogger-track-data](https://github.com/jbhoorasingh/gt7-datalogger-track-data) (CC0), built on captures from [zetetos/gt-telemetry](https://github.com/zetetos/gt-telemetry) (MIT). Test laps from [vthinsel/GT7Tracks](https://github.com/vthinsel/GT7Tracks) (MIT).
 
 Not affiliated with Sony Interactive Entertainment, Polyphony Digital or Victory. Gran Turismo is a trademark of Sony Interactive Entertainment Inc.
 

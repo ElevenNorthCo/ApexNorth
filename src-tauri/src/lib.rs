@@ -1,3 +1,4 @@
+mod catalog;
 mod engineer;
 mod session;
 mod settings;
@@ -100,8 +101,15 @@ impl LiveHandler {
                 }
             },
         };
-        if ctx.track.is_none() && lap.is_valid {
-            if let Ok(t) = db.identify_track(lap.start_pos, lap.length_m, &lap.samples) {
+        if ctx.track.is_none() {
+            // A valid lap names the track (from the catalog, or a placeholder);
+            // any other lap only when the catalog recognises it.
+            let found = if lap.is_valid {
+                db.identify_track(lap.start_pos, lap.length_m, &lap.samples).map(Some)
+            } else {
+                db.recognise_track(lap.start_pos, lap.length_m, &lap.samples)
+            };
+            if let Ok(Some(t)) = found {
                 let _ = db.set_session_track(session_id, t.id);
                 if let Ok(Some((time_ms, samples))) = db.best_lap_for(t.id, ctx.car_code) {
                     self.engine.set_reference(RefLap { time_ms, samples, standing_start: false });
@@ -300,6 +308,12 @@ fn rename_track(state: State<AppState>, track_id: i64, name: String) -> Result<(
     state.db.lock().rename_track(track_id, name.trim())
 }
 
+/// Every GT7 track layout, for picking a name when a track isn't recognised.
+#[tauri::command]
+fn track_catalog() -> Vec<&'static catalog::tracks::Layout> {
+    catalog::tracks::catalog().layouts().iter().collect()
+}
+
 #[tauri::command]
 fn get_settings(state: State<AppState>) -> Settings {
     state.settings.read().clone()
@@ -374,8 +388,23 @@ pub fn run() {
             });
             let auto_ip = settings.auto_connect.then(|| settings.last_ip.clone()).flatten();
 
+            let db = Arc::new(Mutex::new(db));
+            {
+                // Load the track catalog off the UI thread and name tracks
+                // recorded before it existed.
+                let db = db.clone();
+                std::thread::spawn(move || {
+                    catalog::tracks::catalog();
+                    match db.lock().name_known_tracks() {
+                        Ok(n) if n > 0 => log::info!("named {n} tracks from the catalog"),
+                        Ok(_) => {}
+                        Err(e) => log::error!("name tracks: {e}"),
+                    }
+                });
+            }
+
             app.manage(AppState {
-                db: Arc::new(Mutex::new(db)),
+                db,
                 settings: Arc::new(RwLock::new(settings)),
                 settings_path,
                 voices_dir,
@@ -406,6 +435,7 @@ pub fn run() {
             get_lap,
             delete_session,
             rename_track,
+            track_catalog,
             get_settings,
             save_settings,
             list_voices,

@@ -45,6 +45,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
          ├ strategy.rs    fuel + tyres → PitPlan
          └ incidents.rs   SpinDetector
        storage/mod.rs     → SQLite (tracks, sessions, laps; samples = zstd(bincode(Vec<Sample>)))
+         └ catalog/       built-in GT7 data: cars.rs (car_code → name), tracks.rs (121 layouts, lap → layout)
        engineer/rules.rs  → candidate Calls (+ live.rs: tyre temps, wheel slip)
          → director.rs    chatter level, category toggle, anti-nag cooldown, routine gap, calm-moment hold
          → voice.rs       priority queue (High clears Low) → piper CLI → cached WAV → rodio
@@ -57,7 +58,13 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - The current lap time comes from `packet_id` ticks (60 Hz).
   - A finished lap uses the game's `last_lap_ms`. Sample `t` values are rescaled to match it.
   - A lap is invalid only with an `InvalidReason` (joined mid-lap, rewind/reset, confirmed telemetry jump, too short, pit lap). A position jump has to be impossible over the real elapsed time (packet-id gap) *and* confirmed by 3 packets. Stale or reordered packets are dropped. Don't loosen this back to single-packet checks; it made real laps "not count".
-- **Track identity** is a fingerprint of start/finish position plus lap length (GT7 sends no track ID). See `Db::identify_track`.
+- **Track identity** (GT7 sends no track ID):
+  - First, the lap's (x, z) line is matched against `catalog/tracks.rs`. It needs two-way coverage, the same direction, and the least divergence, which tells chicane variants apart.
+  - Matched tracks store `tracks.layout_id`. Otherwise it falls back to a fingerprint of start/finish position plus lap length, with a placeholder name. See `Db::identify_track`.
+  - On launch, `Db::name_known_tracks` renames placeholder tracks and gives tracks to sessions that lacked one.
+  - User-typed names are never overwritten. Picking a catalog name in rename links the layout.
+- **Car names** come from `catalog/cars.rs` and are sent as `carName` on sessions and laps.
+- **Refresh the catalogs** with `scripts/build_gt7_data.py <dir with gt7info + gt7-datalogger-track-data clones>`.
 - **Settings** (`settings.rs`) are JSON in the app config dir, held in `Arc<RwLock<Settings>>`.
 - **Adding a setting:**
   1. Add the field with a `#[serde(default)]`-compatible default.
@@ -96,7 +103,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 
 ## GT7 facts that shape the design
 - GT7 doesn't send:
-  - a track ID or car name (only `car_code`)
+  - a track ID or car name (only `car_code`; both come from the built-in catalog)
   - race position during the race (only `pre_race_position` on the grid), or any data on other cars. Don't announce position changes until a reliable source exists.
   - tyre wear
   - the current lap time

@@ -95,6 +95,8 @@ export interface SessionSummary {
   trackId: number | null;
   trackName: string | null;
   carCode: number;
+  /** Full car name from the built-in GT7 car list, null for an unlisted code. */
+  carName: string | null;
   startedAt: number;
   totalLaps: number;
   lapCount: number;
@@ -134,9 +136,20 @@ export interface Sample {
 
 export interface LapDetail extends LapSummary {
   carCode: number;
+  carName: string | null;
   trackId: number | null;
   trackName: string | null;
   samples: Sample[];
+}
+
+/** A GT7 track layout from the built-in catalog. */
+export interface TrackLayout {
+  id: string;
+  name: string;
+  venue: string;
+  country: string;
+  lengthM: number;
+  reverse: boolean;
 }
 
 export interface Callouts {
@@ -180,6 +193,7 @@ export const api = {
   getLap: (lapId: number) => invoke<LapDetail>("get_lap", { lapId }),
   deleteSession: (sessionId: number) => invoke<void>("delete_session", { sessionId }),
   renameTrack: (trackId: number, name: string) => invoke<void>("rename_track", { trackId, name }),
+  trackCatalog: () => invoke<TrackLayout[]>("track_catalog"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
   listVoices: () => invoke<string[]>("list_voices"),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type InvalidReason, type LapSummary, type SessionSummary } from "../lib/api";
+import { api, type InvalidReason, type LapSummary, type SessionSummary, type TrackLayout } from "../lib/api";
 
 const INVALID_WHY: Record<InvalidReason, string> = {
   joined_mid_lap: "Timing joined part-way through the lap",
@@ -21,6 +21,10 @@ export function SessionView({ sessionId }: { sessionId: number }) {
   const [laps, setLaps] = useState<LapSummary[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [layouts, setLayouts] = useState<TrackLayout[]>([]);
+  useEffect(() => {
+    if (editing != null && layouts.length === 0) api.trackCatalog().then(setLayouts);
+  }, [editing, layouts.length]);
 
   const load = () => {
     api.listSessions().then((all) => setSession(all.find((s) => s.id === sessionId) ?? null));
@@ -65,10 +69,19 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                 >
                   <input
                     autoFocus
+                    list="gt7-tracks"
+                    placeholder="Pick a GT7 track or type a name"
                     value={editing}
                     onChange={(e) => setEditing(e.target.value)}
                     className="rounded-lg border border-white/15 bg-black/40 px-3 py-1.5 text-[22px] font-bold outline-none focus:border-accent"
                   />
+                  <datalist id="gt7-tracks">
+                    {layouts.map((l) => (
+                      <option key={l.id} value={l.name}>
+                        {`${l.country} · ${(l.lengthM / 1000).toFixed(2)} km`}
+                      </option>
+                    ))}
+                  </datalist>
                   <button type="submit" className="text-green-400">
                     <Check />
                   </button>
@@ -84,7 +97,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                 </h1>
               )}
               <div className="mt-1 text-white/60">
-                {shortDate(session.startedAt)} · {timeOfDay(session.startedAt)} · {carName(session.carCode)} ·{" "}
+                {shortDate(session.startedAt)} · {timeOfDay(session.startedAt)} · {carName(session.carCode, session.carName)} ·{" "}
                 {session.totalLaps > 0 ? `Race (${session.totalLaps} laps)` : "Practice"}
               </div>
             </div>

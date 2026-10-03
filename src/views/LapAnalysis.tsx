@@ -228,7 +228,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         <div className="flex items-baseline justify-between">
           <div>
             <div className="text-[13px] text-white/50">
-              {lap.trackName ?? "Unknown track"} · {carName(lap.carCode)}
+              {lap.trackName ?? "Unknown track"} · {carName(lap.carCode, lap.carName)}
             </div>
             <h1 className="num mt-1 text-[28px] font-bold">
               Lap {lap.lapNo} · {lapTime(lap.timeMs)}

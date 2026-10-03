@@ -81,7 +81,7 @@ export function Activity() {
                   )}
                   <Value>{s.lapCount}</Value>
                   <Value>{lapTime(s.bestMs)}</Value>
-                  <Value className="truncate">{carName(s.carCode).toUpperCase()}</Value>
+                  <Value className="truncate">{carName(s.carCode, s.carName).toUpperCase()}</Value>
                   <div className="col-span-3 text-[15px] text-white/55">
                     {s.totalLaps > 0 ? "Race" : "Practice"} · GT7 · {timeOfDay(s.startedAt)}
                   </div>
