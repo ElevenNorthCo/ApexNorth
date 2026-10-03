@@ -65,8 +65,11 @@ export function SessionView({ sessionId }: { sessionId: number }) {
             className="relative mt-4 flex min-h-[150px] overflow-hidden rounded-[16px]"
             style={{ border: `1.5px solid ${kindInfo(sessionKind(session)).color}`, boxShadow: `0 0 18px color-mix(in srgb, ${kindInfo(sessionKind(session)).color} 30%, transparent)` }}
           >
-            <TrackArt venue={session.venue} outline={session.outline} className="absolute inset-0 opacity-60" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#050807] via-[#050807]/85 to-transparent" />
+            <div className="absolute inset-0 bg-[#070b0a]" />
+            <div className="absolute inset-y-0 right-0 w-[62%]">
+              <TrackArt venue={session.venue} outline={session.outline} fade="left" className="h-full w-full" />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-r from-[#070b0a] from-35% via-[#070b0a]/60 via-55% to-transparent" />
             <div className="relative flex flex-1 items-center justify-between gap-6 p-6">
               <div className="min-w-0">
                 {editing != null ? (

@@ -106,9 +106,9 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: number | un
 
       <div className="flex min-w-0 flex-1 flex-col justify-between py-5 pl-6 pr-3">
         <div>
-          <div className="flex items-center gap-3">
-            <Flag country={s.country} height={20} />
-            <h2 className="tech truncate text-[24px] font-bold leading-none tracking-[0.03em]">{title}</h2>
+          <div className="flex items-start gap-3">
+            <span className="mt-[2px]"><Flag country={s.country} height={20} /></span>
+            <h2 className="tech line-clamp-2 text-[24px] font-bold leading-[1.1] tracking-[0.03em]">{title}</h2>
           </div>
           {subtitle && <div className="tech mt-1.5 truncate pl-[1px] text-[15px] text-white/60">{subtitle}</div>}
         </div>

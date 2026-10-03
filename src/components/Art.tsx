@@ -2,7 +2,18 @@ import { hueFor, trackImage } from "../lib/media";
 import { TrackOutline } from "./TrackOutline";
 
 /** Venue photo when one has been added, else generated art from the track's shape. */
-export function TrackArt({ venue, outline, className = "" }: { venue: string | null; outline: [number, number][]; className?: string }) {
+export function TrackArt({
+  venue,
+  outline,
+  className = "",
+  fade = "right",
+}: {
+  venue: string | null;
+  outline: [number, number][];
+  className?: string;
+  /** Which edge blends into the card behind it. */
+  fade?: "left" | "right";
+}) {
   const img = trackImage(venue);
   const hue = hueFor(venue ?? "track");
   return (
@@ -24,7 +35,9 @@ export function TrackArt({ venue, outline, className = "" }: { venue: string | n
           </div>
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#070b0a]" />
+      <div
+        className={`absolute inset-0 ${fade === "right" ? "bg-gradient-to-r" : "bg-gradient-to-l"} from-transparent via-transparent to-[#070b0a]`}
+      />
     </div>
   );
 }
