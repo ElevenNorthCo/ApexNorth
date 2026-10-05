@@ -3,7 +3,10 @@ import type { Sample } from "../lib/api";
 
 interface Props {
   samples: Sample[];
+  /** Reference lap's line, drawn dashed. */
   compare?: { x: number; z: number }[] | null;
+  /** Reference car at the same lap time. */
+  ghost?: { x: number; z: number } | null;
   /** Index into `samples` of the car position. */
   cursor: number;
   /** Optional [startIdx, endIdx] to frame and highlight. */
@@ -16,7 +19,19 @@ interface Props {
 const TRACK_WIDTH_M = 13;
 
 /** Canvas track map: track band, racing line, compare line and car dot. */
-export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sectorMarks }: Props) {
+/**
+ * Laps are loops, so join the end back to the start when they're close: a
+ * packet gap at the line can leave a short hole there.
+ */
+function closes(pts: { x: number; z: number }[]): boolean {
+  if (pts.length < 10) return false;
+  const a = pts[0];
+  const b = pts[pts.length - 1];
+  const gap = Math.hypot(a.x - b.x, a.z - b.z);
+  return gap > 0.5 && gap < 250;
+}
+
+export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom, sectorMarks }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
 
@@ -77,6 +92,7 @@ export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sector
           if (i === from) ctx.moveTo(px(p.x), py(p.z));
           else ctx.lineTo(px(p.x), py(p.z));
         }
+        if (from === 0 && to === pts.length - 1 && closes(pts)) ctx.lineTo(px(pts[0].x), py(pts[0].z));
       };
 
       ctx.lineJoin = "round";
@@ -126,8 +142,8 @@ export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sector
         ctx.stroke();
       }
 
-      if (compare && compare[cursor]) {
-        const c = compare[cursor];
+      if (ghost) {
+        const c = ghost;
         ctx.beginPath();
         ctx.arc(px(c.x), py(c.z), 7, 0, Math.PI * 2);
         ctx.strokeStyle = "white";
@@ -146,7 +162,7 @@ export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sector
     const ro = new ResizeObserver(draw);
     ro.observe(canvas);
     return () => ro.disconnect();
-  }, [samples, compare, cursor, range, zoom, sectorMarks]);
+  }, [samples, compare, ghost, cursor, range, zoom, sectorMarks]);
 
   // Overview mini-map
   useEffect(() => {
@@ -173,6 +189,7 @@ export function TrackMap({ samples, compare, cursor, range, zoom, onZoom, sector
       if (i) ctx.lineTo(x, y);
       else ctx.moveTo(x, y);
     });
+    if (closes(samples)) ctx.closePath();
     ctx.strokeStyle = "#4a9eff";
     ctx.lineWidth = 3.5;
     ctx.lineJoin = "round";

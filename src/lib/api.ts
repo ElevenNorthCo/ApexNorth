@@ -107,9 +107,22 @@ export interface SessionSummary {
   outline: [number, number][];
   /** Type the user tagged, or null (inferred from totalLaps). */
   kind: SessionKind | null;
+  /** Race settings the user noted, or null. */
+  conditions: SessionConditions | null;
   layoutId: string | null;
   venue: string | null;
   country: string | null;
+}
+
+/** Race settings GT7 doesn't send; the user notes them per session. */
+export interface SessionConditions {
+  mode?: "offline" | "online" | null;
+  /** Balance of Performance on. */
+  bop?: boolean | null;
+  /** Tyre wear multiplier, 0 = off. */
+  tyreWear?: number | null;
+  /** Fuel consumption multiplier, 0 = off. */
+  fuelRate?: number | null;
 }
 
 export interface LapSummary {
@@ -177,6 +190,8 @@ export interface Settings {
   lastIp: string | null;
   autoConnect: boolean;
   units: "metric" | "imperial";
+  /** What the engineer calls you. Empty = no name. */
+  driverName: string;
   voice: {
     enabled: boolean;
     piperPath: string;
@@ -201,6 +216,8 @@ export const api = {
   getLap: (lapId: number) => invoke<LapDetail>("get_lap", { lapId }),
   deleteSession: (sessionId: number) => invoke<void>("delete_session", { sessionId }),
   setSessionKind: (sessionId: number, kind: SessionKind | null) => invoke<void>("set_session_kind", { sessionId, kind }),
+  setSessionConditions: (sessionId: number, conditions: SessionConditions | null) =>
+    invoke<void>("set_session_conditions", { sessionId, conditions }),
   renameTrack: (trackId: number, name: string) => invoke<void>("rename_track", { trackId, name }),
   trackCatalog: () => invoke<TrackLayout[]>("track_catalog"),
   getSettings: () => invoke<Settings>("get_settings"),

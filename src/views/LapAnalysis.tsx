@@ -21,32 +21,88 @@ function seek(samples: Sample[], key: "d" | "t", v: number): number {
 }
 
 interface Aligned {
-  spd: number[];
-  thr: number[];
-  brk: number[];
-  gear: number[];
-  pos: { x: number; z: number }[];
-  delta: number[];
+  spd: (number | null)[];
+  thr: (number | null)[];
+  brk: (number | null)[];
+  gear: (number | null)[];
+  delta: (number | null)[];
+  /** Where the reference car was at the same elapsed time (the ghost). */
+  ghost: ({ x: number; z: number } | null)[];
 }
 
-/** Resample a reference lap onto the primary lap's distance points (by lap fraction). */
+/** How far along segment a→b the point p projects (0..1 inside), and the squared distance to it. */
+function project(p: Sample, a: Sample, b: Sample): [number, number] {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len2 = dx * dx + dz * dz || 1e-6;
+  const u = ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2;
+  const c = Math.max(0, Math.min(1, u));
+  const ex = a.x + dx * c - p.x;
+  const ez = a.z + dz * c - p.z;
+  return [u, ex * ex + ez * ez];
+}
+
+/**
+ * Match each point of the primary lap to the same place on the reference lap
+ * (nearest point on its line, searched forward so the matching can't jump
+ * across the track), so traces and the delta compare like with like even
+ * when the laps were recorded from slightly different start points.
+ */
 function align(primary: Sample[], ref: Sample[]): Aligned {
-  const pLen = primary[primary.length - 1].d || 1;
-  const rLen = ref[ref.length - 1].d || 1;
-  const out: Aligned = { spd: [], thr: [], brk: [], gear: [], pos: [], delta: [] };
+  const out: Aligned = { spd: [], thr: [], brk: [], gear: [], delta: [], ghost: [] };
+  const last = ref.length - 2;
+  // Start: the nearest segment in the first fifth of the reference lap.
+  let j = 0;
+  let bestD = Infinity;
+  for (let k = 0; k <= Math.min(last, Math.ceil(ref.length / 5)); k++) {
+    const [, d2] = project(primary[0], ref[k], ref[k + 1]);
+    if (d2 < bestD) {
+      bestD = d2;
+      j = k;
+    }
+  }
+  const WINDOW = 150; // segments (~5 s at 30 Hz)
   for (const p of primary) {
-    const d = (p.d / pLen) * rLen;
-    const i = Math.max(1, Math.min(ref.length - 1, seek(ref, "d", d)));
-    const a = ref[i - 1];
-    const b = ref[i];
-    const f = Math.max(0, Math.min(1, (d - a.d) / (b.d - a.d || 1)));
-    const lerp = (u: number, v: number) => u + (v - u) * f;
-    out.spd.push(lerp(a.spd, b.spd));
-    out.thr.push(lerp(a.thr, b.thr));
-    out.brk.push(lerp(a.brk, b.brk));
-    out.gear.push(f < 0.5 ? a.gear : b.gear);
-    out.pos.push({ x: lerp(a.x, b.x), z: lerp(a.z, b.z) });
-    out.delta.push((p.t - lerp(a.t, b.t)) / 1000);
+    let bj = j;
+    let bu = 0;
+    let bd = Infinity;
+    for (let k = Math.max(0, j - 3); k <= Math.min(last, j + WINDOW); k++) {
+      const [u, d2] = project(p, ref[k], ref[k + 1]);
+      if (d2 < bd) {
+        bd = d2;
+        bj = k;
+        bu = u;
+      }
+    }
+    j = bj;
+    // Off either end of the reference line, or nowhere near it: no match.
+    const off = (bj === 0 && bu < 0) || (bj === last && bu > 1) || bd > 60 * 60;
+    if (off) {
+      out.spd.push(null);
+      out.thr.push(null);
+      out.brk.push(null);
+      out.gear.push(null);
+      out.delta.push(null);
+    } else {
+      const a = ref[bj];
+      const b = ref[bj + 1];
+      const f = Math.max(0, Math.min(1, bu));
+      const lerp = (x: number, y: number) => x + (y - x) * f;
+      out.spd.push(lerp(a.spd, b.spd));
+      out.thr.push(lerp(a.thr, b.thr));
+      out.brk.push(lerp(a.brk, b.brk));
+      out.gear.push(f < 0.5 ? a.gear : b.gear);
+      out.delta.push((p.t - lerp(a.t, b.t)) / 1000);
+    }
+    // Ghost car: the reference at the same lap time.
+    if (p.t < ref[0].t || p.t > ref[ref.length - 1].t) out.ghost.push(null);
+    else {
+      const i = Math.max(1, seek(ref, "t", p.t));
+      const a = ref[i - 1];
+      const b = ref[i];
+      const f = Math.max(0, Math.min(1, (p.t - a.t) / (b.t - a.t || 1)));
+      out.ghost.push({ x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f });
+    }
   }
   return out;
 }
@@ -91,7 +147,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   const samples = lap?.samples ?? [];
   const len = samples.length ? samples[samples.length - 1].d : 1;
   const x = useMemo(() => samples.map((s) => s.d), [samples]);
-  const aligned = useMemo(() => (cmp && samples.length && cmp.samples.length ? align(samples, cmp.samples) : null), [samples, cmp]);
+  const aligned = useMemo(() => (cmp && samples.length && cmp.samples.length > 1 ? align(samples, cmp.samples) : null), [samples, cmp]);
 
   const sectorIdx = useMemo(
     () => Array.from({ length: SECTORS + 1 }, (_, k) => (samples.length ? seek(samples, "d", (len * k) / SECTORS) : 0)),
@@ -126,12 +182,18 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   const onChartCursor = (d: number) => {
     if (!playing && samples.length) setCursor(Math.min(samples.length - 1, seek(samples, "d", d)));
   };
+  // Grabbing a chart takes over from playback: pause, then drag to scrub.
+  const onScrubStart = (d: number) => {
+    setPlaying(false);
+    if (samples.length) setCursor(Math.min(samples.length - 1, seek(samples, "d", d)));
+  };
 
   const k = imperial ? 0.621371 : 1;
   const charts = useMemo(() => {
     if (!samples.length) return [];
     const dim = "rgba(255,255,255,0.45)";
-    const maxSpd = Math.ceil(Math.max(...samples.map((s) => s.spd * k), ...(aligned?.spd ?? []).map((v) => v * k)));
+    const refSpd = (aligned?.spd ?? []).filter((v): v is number => v != null);
+    const maxSpd = Math.ceil(Math.max(...samples.map((s) => s.spd * k), ...refSpd.map((v) => v * k)));
     const list: { title: string; series: ChartSeries[]; yRange?: [number, number]; height: number; zero?: boolean }[] = [
       {
         title: imperial ? "SPEED mph" : "SPEED km/h",
@@ -139,7 +201,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         yRange: [0, maxSpd],
         series: [
           { label: "Speed", values: samples.map((s) => s.spd * k), color: "#7dd3fc", width: 1.8 },
-          ...(aligned ? [{ label: "Ref", values: aligned.spd.map((v) => v * k), color: dim, dash: [4, 4] }] : []),
+          ...(aligned ? [{ label: "Ref", values: aligned.spd.map((v) => (v == null ? null : v * k)), color: dim, dash: [4, 4] }] : []),
         ],
       },
       {
@@ -191,7 +253,8 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
       <div className="relative h-full w-[52%] min-w-[360px]">
         <TrackMap
           samples={samples}
-          compare={aligned?.pos}
+          compare={cmp?.samples}
+          ghost={aligned?.ghost[cursor] ?? null}
           cursor={cursor}
           range={mapRange}
           zoom={zoom}
@@ -327,6 +390,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
                 xRange={xRange}
                 cursorD={cur.d}
                 onCursor={onChartCursor}
+                onScrubStart={onScrubStart}
                 zeroLine={c.zero}
               />
             </div>

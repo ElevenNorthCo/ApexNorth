@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type InvalidReason, type LapSummary, type SessionKind, type SessionSummary, type TrackLayout } from "../lib/api";
+import { api, type InvalidReason, type LapSummary, type SessionConditions, type SessionKind, type SessionSummary, type TrackLayout } from "../lib/api";
 
 const INVALID_WHY: Record<InvalidReason, string> = {
   joined_mid_lap: "Timing joined part-way through the lap",
@@ -124,6 +124,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
         )}
 
         {session && <KindPicker session={session} onChange={load} />}
+        {session && <ConditionsPicker session={session} laps={laps} onChange={load} />}
         {session && <TrackComparison session={session} all={all} />}
 
         <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Laps</h2>
@@ -240,6 +241,74 @@ function KindPicker({ session, onChange }: { session: SessionSummary; onChange: 
         })}
       </div>
       {current == null && <span className="text-[12px] text-white/40">Guessed. Pick one to tag it.</span>}
+    </div>
+  );
+}
+
+const MULTIPLIERS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50];
+
+/**
+ * Race settings GT7 doesn't send (online or offline, BoP, tyre wear and fuel
+ * multipliers), noted by the driver. Fuel use is measured, so it's offered
+ * as a hint.
+ */
+function ConditionsPicker({ session, laps, onChange }: { session: SessionSummary; laps: LapSummary[]; onChange: () => void }) {
+  const c = session.conditions ?? {};
+  const set = async (patch: SessionConditions) => {
+    await api.setSessionConditions(session.id, { ...c, ...patch });
+    onChange();
+  };
+  const fuel = laps.filter((l) => l.isValid && !l.isPit && l.fuelUsedPct != null).map((l) => l.fuelUsedPct!);
+  const fuelPerLap = fuel.length ? fuel.reduce((a, b) => a + b, 0) / fuel.length : null;
+  const seg = (active: boolean) =>
+    `tech border-r border-white/10 px-3 py-2 text-[13px] last:border-r-0 ${active ? "bg-accent/15 text-accent shadow-[inset_0_0_0_1.5px_var(--color-accent)]" : "text-white/60 hover:text-white"}`;
+  const multiplier = (label: string, value: number | null | undefined, on: (v: number | null) => void, hint?: string) => (
+    <label className="flex items-center gap-2">
+      <span className="tech text-[13px] text-white/50">{label}</span>
+      <select
+        value={value ?? ""}
+        onChange={(e) => on(e.target.value === "" ? null : Number(e.target.value))}
+        className="num rounded-[10px] border border-white/10 bg-black/40 px-3 py-2 text-[13px] outline-none focus:border-accent"
+      >
+        <option value="">—</option>
+        {MULTIPLIERS.map((m) => (
+          <option key={m} value={m}>
+            {m === 0 ? "Off" : `×${m}`}
+          </option>
+        ))}
+      </select>
+      {hint && <span className="text-[12px] text-white/40">{hint}</span>}
+    </label>
+  );
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+      <div className="flex items-center gap-3">
+        <span className="tech text-[13px] text-white/50">Race</span>
+        <div className="flex overflow-hidden rounded-[10px] border border-white/10 bg-black/40">
+          {([["offline", "Single player"], ["online", "Online"]] as const).map(([m, label]) => (
+            <button key={m} onClick={() => set({ mode: c.mode === m ? null : m })} className={seg(c.mode === m)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="tech text-[13px] text-white/50">BoP</span>
+        <div className="flex overflow-hidden rounded-[10px] border border-white/10 bg-black/40">
+          {([[true, "On"], [false, "Off"]] as const).map(([b, label]) => (
+            <button key={label} onClick={() => set({ bop: c.bop === b ? null : b })} className={seg(c.bop === b)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {multiplier("Tyre wear", c.tyreWear, (v) => set({ tyreWear: v }))}
+      {multiplier(
+        "Fuel",
+        c.fuelRate,
+        (v) => set({ fuelRate: v }),
+        fuelPerLap == null ? undefined : fuelPerLap < 0.05 ? "No fuel used" : `Measured ${fuelPerLap.toFixed(1)}% a lap`,
+      )}
     </div>
   );
 }

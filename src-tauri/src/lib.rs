@@ -145,7 +145,11 @@ impl Handler for LiveHandler {
     fn packet(&mut self, p: Packet) {
         let cfg = {
             let s = self.settings.read();
-            EngineerConfig { chatter: s.voice.chatter, callouts: s.voice.callouts.clone() }
+            EngineerConfig {
+                chatter: s.voice.chatter,
+                callouts: s.voice.callouts.clone(),
+                driver: Some(s.driver_name.trim()).filter(|n| !n.is_empty()).map(str::to_string),
+            }
         };
         let now = Instant::now();
         for ev in self.engine.on_packet(&p) {
@@ -309,6 +313,11 @@ fn set_session_kind(state: State<AppState>, session_id: i64, kind: Option<String
 }
 
 #[tauri::command]
+fn set_session_conditions(state: State<AppState>, session_id: i64, conditions: Option<storage::SessionConditions>) -> Result<(), String> {
+    state.db.lock().set_session_conditions(session_id, conditions.as_ref())
+}
+
+#[tauri::command]
 fn rename_track(state: State<AppState>, track_id: i64, name: String) -> Result<(), String> {
     state.db.lock().rename_track(track_id, name.trim())
 }
@@ -440,6 +449,7 @@ pub fn run() {
             get_lap,
             delete_session,
             set_session_kind,
+            set_session_conditions,
             rename_track,
             track_catalog,
             get_settings,

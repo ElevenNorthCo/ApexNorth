@@ -163,6 +163,19 @@ struct LapBuf {
     ref_cum: Option<[u32; SECTOR_COUNT]>,
     /// Elapsed time at each boundary crossed so far.
     splits: Vec<u32>,
+    /// How the car crossed into this lap from the previous one.
+    entry: Option<Entry>,
+}
+
+/// The last packet of one lap and the first of the next. The line lies
+/// between them; after a packet gap it can be well behind the first packet.
+#[derive(Debug, Clone, Copy)]
+struct Entry {
+    from: [f32; 3],
+    to: [f32; 3],
+    from_speed: f32,
+    to_speed: f32,
+    gap_ticks: u32,
 }
 
 impl LapBuf {
@@ -183,6 +196,7 @@ impl LapBuf {
             sector_len: None,
             ref_cum: None,
             splits: Vec::with_capacity(SECTOR_COUNT),
+            entry: None,
         }
     }
 
@@ -512,7 +526,14 @@ impl Engine {
                     fuel_capacity: p.fuel_capacity,
                     wait: 0,
                 });
-                self.lap = Some(self.new_lap(p.lap, p, true));
+                let mut lap = self.new_lap(p.lap, p, true);
+                if let Some(pr) = prev {
+                    if dt_ticks > 6 {
+                        log::info!("lap {} began after a {} ms packet gap", p.lap, dt_ticks as f32 * 1000.0 / TICK_HZ);
+                    }
+                    lap.entry = Some(Entry { from: pr.position, to: p.position, from_speed: pr.speed, to_speed: p.speed, gap_ticks: dt_ticks });
+                }
+                self.lap = Some(lap);
             }
             Some(cur) if p.lap != cur => {
                 // Lap counter jumped: restart or rewind.
@@ -636,7 +657,9 @@ impl Engine {
         let computed = buf.elapsed_ms();
         let official = if official_ready { p.last_lap_ms as u32 } else { computed };
 
-        if computed > 0 && official != computed {
+        let next = self.lap.as_mut().filter(|l| l.lap_no == buf.lap_no + 1);
+        let joined = next.is_some_and(|next| join_at_line(&mut buf, next, official));
+        if !joined && computed > 0 && official != computed {
             let scale = official as f32 / computed as f32;
             if (scale - 1.0).abs() < 0.03 {
                 for s in &mut buf.samples {
@@ -804,6 +827,49 @@ impl Engine {
             car_code: p.car_code,
         };
     }
+}
+
+/// Place the start/finish line between the last packet of `old` and the
+/// first of `next`, using the official lap time to split the gap. `old` gets
+/// a closing sample at the line, and `next` is re-based so it starts there
+/// (t = 0, d = 0) instead of at its first packet. Without this a packet gap
+/// at the line leaves a hole in both laps and shifts the next lap's timing.
+fn join_at_line(old: &mut LapBuf, next: &mut LapBuf, official: u32) -> bool {
+    let Some(e) = next.entry.take() else { return false };
+    let (Some(&last), Some(&first)) = (old.samples.last(), next.samples.first()) else { return false };
+    let gap_ms = e.gap_ticks as f32 * 1000.0 / TICK_HZ;
+    let tau = official as f32 - old.elapsed_ms() as f32;
+    if tau < 0.0 || tau > gap_ms + 50.0 {
+        return false;
+    }
+    let avg = (e.from_speed + e.to_speed) / 2.0;
+    if dist3(e.from, e.to) > avg.max(5.0) * gap_ms / 1000.0 * 1.5 + JUMP_SLACK_M {
+        return false;
+    }
+    let f = (tau / gap_ms.max(1.0)).clamp(0.0, 1.0);
+    let line: [f32; 3] = std::array::from_fn(|i| e.from[i] + (e.to[i] - e.from[i]) * f);
+    let spd = (e.from_speed + (e.to_speed - e.from_speed) * f) * 3.6;
+
+    // Close the old lap at the line.
+    old.dist += (avg * tau / 1000.0) as f64;
+    old.samples.push(Sample { t: official, d: old.dist as f32, x: line[0], y: line[1], z: line[2], spd, ..last });
+
+    // Re-base the new lap: drop the part of the gap before the line.
+    let tau_ticks = ((tau * TICK_HZ / 1000.0).round() as u32).min(e.gap_ticks).min(next.ticks);
+    next.ticks -= tau_ticks;
+    let shift_ms = (tau_ticks as f32 * 1000.0 / TICK_HZ).round() as u32;
+    let true_d = avg * (gap_ms - tau).max(0.0) / 1000.0;
+    let shift_d = first.d - true_d;
+    next.dist = (next.dist - shift_d as f64).max(0.0);
+    for s in &mut next.samples {
+        s.t = s.t.saturating_sub(shift_ms);
+        s.d = (s.d - shift_d).max(0.0);
+    }
+    for t in &mut next.splits {
+        *t = t.saturating_sub(shift_ms);
+    }
+    next.samples.insert(0, Sample { t: 0, d: 0.0, x: line[0], y: line[1], z: line[2], spd, ..first });
+    true
 }
 
 fn pct(v: u8) -> u8 {
@@ -1051,6 +1117,57 @@ mod tests {
         assert_eq!(ctx[1].next_lap, 3);
         let s = ctx[1].strategy.as_ref().unwrap();
         assert_eq!(s.window, PitWindow::NoStop);
+    }
+
+    #[test]
+    fn packet_gap_at_the_line_is_closed() {
+        // A long straight: laps are 500 m of continuous road, and 160 packets
+        // (2.7 s) go missing around each line crossing.
+        let mut e = Engine::new();
+        let v = 50.0;
+        let mut ev = vec![];
+        let mut id = 0;
+        for _ in 0..30 {
+            id += 1;
+            ev.extend(e.on_packet(&Packet { packet_id: id, lap: 0, total_laps: 3, last_lap_ms: -1, fuel: 50.0, fuel_capacity: 100.0, ..Default::default() }));
+        }
+        let lap_ticks = 600; // 10 s a lap
+        for tick in 0..lap_ticks * 3 + 200 {
+            id += 1;
+            let lap = (tick / lap_ticks + 1) as i16;
+            let into = tick % lap_ticks;
+            // Lost: the last 80 packets before each line and the first 80 after.
+            if into >= lap_ticks - 80 || (lap > 1 && into < 80) {
+                continue;
+            }
+            let last_lap_ms = if lap == 1 { -1 } else { 9_998 + lap as i32 };
+            ev.extend(e.on_packet(&Packet {
+                packet_id: id,
+                lap,
+                total_laps: 3,
+                speed: v,
+                position: [tick as f32 * v / 60.0, 0.0, 0.0],
+                fuel: 50.0,
+                fuel_capacity: 100.0,
+                last_lap_ms,
+                flags: flags::CAR_ON_TRACK,
+                ..Default::default()
+            }));
+        }
+        let l = laps(&ev);
+        assert!(l.len() >= 2);
+        let lap2 = l[1];
+        let (a, b) = (lap2.samples.first().unwrap(), lap2.samples.last().unwrap());
+        // Starts and ends on the line: x = 500 and x = 1000.
+        assert_eq!((a.t, a.d), (0, 0.0));
+        assert!((a.x - 500.0).abs() < 2.0, "start {}", a.x);
+        assert!((b.x - 1000.0).abs() < 2.0, "end {}", b.x);
+        assert_eq!(b.t, 10_001);
+        assert!((b.d - 500.0).abs() < 2.0, "length {}", b.d);
+        // The first real packet, 80 ticks after the line: 1.333 s, 66.7 m.
+        let s1 = lap2.samples[1];
+        assert!((s1.t as i32 - 1333).abs() <= 20 && (s1.d - 66.7).abs() < 2.0, "{s1:?}");
+        assert!(lap2.is_valid);
     }
 
     #[test]

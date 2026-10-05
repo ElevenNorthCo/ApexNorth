@@ -461,7 +461,7 @@ mod tests {
     fn transcript(level: crate::settings::ChatterLevel) -> Vec<(i16, String)> {
         use crate::engineer::director::EngineerConfig;
         use crate::engineer::rules::Engineer;
-        let cfg = EngineerConfig { chatter: level, callouts: Default::default() };
+        let cfg = EngineerConfig { chatter: level, callouts: Default::default(), driver: Some("Michael".into()) };
         let mut car = Car::new();
         let mut engine = Engine::new();
         let mut eng = Engineer::new();

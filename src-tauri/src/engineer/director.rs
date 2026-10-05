@@ -40,10 +40,12 @@ impl Topic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EngineerConfig {
     pub chatter: ChatterLevel,
     pub callouts: Callouts,
+    /// The driver's name, used now and then ("Good luck out there, Michael").
+    pub driver: Option<String>,
 }
 
 /// Something the engineer could say, with what it's about.
@@ -184,7 +186,7 @@ mod tests {
     use super::*;
 
     fn cfg(chatter: ChatterLevel) -> EngineerConfig {
-        EngineerConfig { chatter, callouts: Callouts::default() }
+        EngineerConfig { chatter, callouts: Callouts::default(), driver: None }
     }
 
     fn call(level: ChatterLevel, p: Priority, key: &'static str) -> Call {

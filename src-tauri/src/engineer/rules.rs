@@ -75,6 +75,8 @@ pub struct Engineer {
     tyre_perf_said: Option<TyrePerformance>,
     projection_said: bool,
     holding_said: bool,
+    /// The driver's name from the settings, if any.
+    driver: Option<String>,
 }
 
 impl Engineer {
@@ -84,9 +86,10 @@ impl Engineer {
 
     pub fn on_event(&mut self, ev: &EngineEvent, cfg: &EngineerConfig, now: Instant) -> Vec<Callout> {
         let level = cfg.chatter;
+        self.sync_driver(cfg);
         let mut calls = vec![];
         match ev {
-            EngineEvent::SessionStarted { .. } => *self = Engineer::default(),
+            EngineEvent::SessionStarted { .. } => *self = Engineer { driver: self.driver.take(), ..Engineer::default() },
             EngineEvent::RaceStart => {
                 self.race_start_at = Some(now);
                 calls.push(Call::new(Topic::RaceStart, Minimal, Priority::High, "race.start", "Lights out. Go, go, go!"));
@@ -133,7 +136,19 @@ impl Engineer {
         self.director.submit(calls, cfg, now)
     }
 
+    fn sync_driver(&mut self, cfg: &EngineerConfig) {
+        if self.driver != cfg.driver {
+            self.driver = cfg.driver.clone();
+        }
+    }
+
+    /// ", Michael" when the driver gave a name, else "".
+    fn name(&self) -> String {
+        self.driver.as_ref().map_or(String::new(), |n| format!(", {n}"))
+    }
+
     pub fn on_live(&mut self, s: &LiveState, cfg: &EngineerConfig, now: Instant) -> Vec<Callout> {
+        self.sync_driver(cfg);
         if s.lap != self.live_lap {
             self.live_lap = s.lap;
             self.lap_start_fuel = s.fuel_pct;
@@ -150,7 +165,10 @@ impl Engineer {
                     Normal,
                     Priority::Normal,
                     "grid.start",
-                    format!("You start P{p} of {n}. Stay out of trouble into turn one."),
+                    match &self.driver {
+                        Some(name) => format!("You start P{p} of {n}. Stay out of trouble into turn one. Good luck out there, {name}."),
+                        None => format!("You start P{p} of {n}. Stay out of trouble into turn one."),
+                    },
                 ));
             }
         }
@@ -273,9 +291,10 @@ impl Engineer {
             None => Some(match (ctx.reference_before, ctx.session_best_before) {
                 (Some(r), _) if lap.time_ms < r => {
                     let gap = speak_gap(r - lap.time_ms);
+                    let name = self.name();
                     self.phrases.pick(
                         "lap.pb",
-                        &[&format!("Purple lap! {t}. New personal best by {gap}."), &format!("New personal best! {t}. That's {gap} quicker.")],
+                        &[&format!("Purple lap{name}! {t}. New personal best by {gap}."), &format!("New personal best{name}! {t}. That's {gap} quicker.")],
                     )
                 }
                 (_, Some(sb)) if lap.time_ms < sb => format!("{t}. Best lap of the session."),
@@ -288,10 +307,11 @@ impl Engineer {
             out.push(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "lap.time", text));
         }
         if ctx.laps_remaining == Some(1) {
+            let name = self.name();
             let text = match self.pos_now.or(self.pos_said) {
-                Some(1) => "Final lap. You're leading, bring it home.".to_string(),
-                Some(p) => format!("Final lap. You're P{p}, bring it home."),
-                None => "Final lap. Bring it home.".to_string(),
+                Some(1) => format!("Final lap{name}. You're leading, bring it home."),
+                Some(p) => format!("Final lap{name}. You're P{p}, bring it home."),
+                None => format!("Final lap{name}. Bring it home."),
             };
             out.push(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "lap.final", text));
         }
@@ -650,7 +670,7 @@ mod tests {
     use std::time::Duration;
 
     fn cfg(chatter: ChatterLevel) -> EngineerConfig {
-        EngineerConfig { chatter, callouts: Callouts::default() }
+        EngineerConfig { chatter, callouts: Callouts::default(), driver: None }
     }
 
     fn split(sector: usize, d: i32, cum: i32, pb: bool) -> EngineEvent {
