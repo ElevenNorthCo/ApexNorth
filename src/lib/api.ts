@@ -5,7 +5,7 @@ export type Variant = "A" | "B" | "Tilde";
 export type PitWindow = "none" | "no_stop" | "closed" | "open" | "box_now";
 export type FuelState = "unknown" | "active" | "inactive";
 export type InvalidReason = "joined_mid_lap" | "rewind_or_reset" | "telemetry_jump" | "insufficient_distance" | "pit_lap";
-export type TyrePerformance = "fresh" | "stable" | "declining" | "poor" | "critical";
+export type TyrePerformance = "unknown" | "fresh" | "stable" | "declining" | "poor" | "critical";
 export type ChatterLevel = "minimal" | "normal" | "chatty" | "crewChief";
 export type SessionKind = "practice" | "qualifying" | "race" | "time_trial";
 

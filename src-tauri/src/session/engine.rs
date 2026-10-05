@@ -725,7 +725,7 @@ impl Engine {
         self.strategy = fuel_pct.and_then(|f| self.fuel.strategy(f, next_lap, p.total_laps));
         let tyres = self.tyres.estimate();
         self.tyre_est = tyres.clone();
-        self.plan = self.strategy.as_ref().and_then(|s| strategy::plan(s, &tyres, next_lap));
+        self.plan = self.strategy.as_ref().and_then(|s| strategy::plan(s, &tyres, next_lap, p.total_laps));
         let ctx = LapContext {
             session_best_before: ctx_session_best,
             reference_before: ctx_reference,

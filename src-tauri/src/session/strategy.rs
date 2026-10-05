@@ -32,9 +32,19 @@ impl PitPlan {
     }
 }
 
-pub fn plan(fuel: &RaceStrategy, tyres: &TyreEstimate, current_lap: i16) -> Option<PitPlan> {
-    if fuel.stops_required == 0 {
+pub fn plan(fuel: &RaceStrategy, tyres: &TyreEstimate, current_lap: i16, total_laps: i16) -> Option<PitPlan> {
+    if total_laps > 0 && current_lap >= total_laps {
+        // A tyre stop at the end of the final lap cannot recover any time.
         return None;
+    }
+    if fuel.stops_required == 0 {
+        if fuel.window == PitWindow::BoxNow {
+            return Some(PitPlan { lap: current_lap, driver: PitDriver::Fuel, fuel_target: current_lap, fuel_latest: current_lap });
+        }
+        // Fuel can finish. Only a strong, sustained pace-loss estimate should
+        // suggest a tyre stop, and it is advice rather than a fuel emergency.
+        return (total_laps > current_lap + 1 && tyres.confidence >= 0.75 && tyres.performance >= TyrePerformance::Poor)
+            .then_some(PitPlan { lap: current_lap, driver: PitDriver::Tyres, fuel_target: total_laps, fuel_latest: total_laps });
     }
     let (earliest, target, latest) = (fuel.earliest_pit_lap?, fuel.target_pit_lap?, fuel.latest_pit_lap?);
     let mut p = PitPlan { lap: target, driver: PitDriver::Fuel, fuel_target: target, fuel_latest: latest };
@@ -78,22 +88,34 @@ mod tests {
 
     #[test]
     fn fuel_only_when_tyres_unsure() {
-        let p = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(6), 0.2), 2).unwrap();
+        let p = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(6), 0.2), 2, 15).unwrap();
         assert_eq!((p.lap, p.driver), (8, PitDriver::Fuel));
     }
 
     #[test]
     fn tyres_bring_the_stop_forward() {
-        let p = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(7), 0.8), 2).unwrap();
+        let p = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(7), 0.8), 2, 15).unwrap();
         assert_eq!((p.lap, p.driver, p.fuel_target), (7, PitDriver::Tyres, 8));
         // Never earlier than the fuel window allows.
-        let q = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(3), 0.8), 2).unwrap();
+        let q = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(3), 0.8), 2, 15).unwrap();
         assert_eq!(q.lap, 6);
     }
 
     #[test]
     fn both_agree() {
-        let p = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(8), 0.8), 2).unwrap();
+        let p = plan(&fuel(), &tyres(TyrePerformance::Declining, Some(8), 0.8), 2, 15).unwrap();
         assert_eq!((p.lap, p.driver), (8, PitDriver::Both));
+    }
+
+    #[test]
+    fn tyre_stop_without_fuel_stop_requires_strong_evidence_and_time_to_recover() {
+        let mut f = fuel();
+        f.stops_required = 0;
+        f.window = PitWindow::NoStop;
+        assert!(plan(&f, &tyres(TyrePerformance::Poor, None, 0.5), 2, 15).is_none());
+        let t = tyres(TyrePerformance::Poor, None, 0.8);
+        assert_eq!(plan(&f, &t, 2, 15).unwrap().driver, PitDriver::Tyres);
+        assert!(plan(&f, &t, 14, 15).is_none());
+        assert!(plan(&f, &t, 15, 15).is_none());
     }
 }

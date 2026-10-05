@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, atomic::{AtomicI16, AtomicU64, Ordering}};
 use std::time::{Duration, Instant};
 
 use crate::settings::VoiceSettings;
@@ -33,11 +34,13 @@ pub struct Callout {
     pub text: String,
     pub priority: Priority,
     pub at: Instant,
+    pub expected_position: Option<i16>,
+    generation: u64,
 }
 
 impl Callout {
     pub fn new(priority: Priority, text: impl Into<String>) -> Callout {
-        Callout { text: text.into(), priority, at: Instant::now() }
+        Callout { text: text.into(), priority, at: Instant::now(), expected_position: None, generation: 0 }
     }
 }
 
@@ -49,21 +52,49 @@ enum Msg {
 #[derive(Clone)]
 pub struct Voice {
     tx: Sender<Msg>,
+    context: Arc<Context>,
+}
+
+#[derive(Default)]
+struct Context {
+    position: AtomicI16,
+    generation: AtomicU64,
+}
+
+impl Context {
+    fn current(&self, c: &Callout) -> bool {
+        c.generation == self.generation.load(Ordering::Acquire)
+            && c.expected_position.map_or(true, |p| p == self.position.load(Ordering::Acquire))
+            && c.at.elapsed() < c.priority.max_age()
+    }
 }
 
 impl Voice {
     /// `on_error` is called when a callout cannot be spoken, so the UI can say why.
     pub fn start(settings: VoiceSettings, cache_dir: PathBuf, on_error: impl Fn(String) + Send + 'static) -> Voice {
         let (tx, rx) = crossbeam_channel::unbounded();
+        let context = Arc::new(Context::default());
+        let worker_context = context.clone();
         std::thread::Builder::new()
             .name("voice".into())
-            .spawn(move || worker(rx, settings, cache_dir, on_error))
+            .spawn(move || worker(rx, settings, cache_dir, worker_context, on_error))
             .expect("spawn voice thread");
-        Voice { tx }
+        Voice { tx, context }
     }
 
-    pub fn say(&self, c: Callout) {
+    pub fn say(&self, mut c: Callout) {
+        c.generation = self.context.generation.load(Ordering::Acquire);
         let _ = self.tx.send(Msg::Say(c));
+    }
+
+    pub fn update_position(&self, position: Option<i16>) {
+        self.context.position.store(position.unwrap_or(0), Ordering::Release);
+    }
+
+    /// Queued and playing calls from the previous session must not leak through.
+    pub fn clear(&self) {
+        self.context.generation.fetch_add(1, Ordering::AcqRel);
+        self.update_position(None);
     }
 
     pub fn configure(&self, s: VoiceSettings) {
@@ -86,7 +117,9 @@ pub fn synthesize(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<Pat
         return Ok(out);
     }
     std::fs::create_dir_all(cache_dir).map_err(|e| e.to_string())?;
-    let tmp = out.with_extension("tmp.wav");
+    // Voice previews and the worker can synthesize the same phrase concurrently.
+    static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+    let tmp = out.with_extension(format!("{}.{}.tmp.wav", std::process::id(), NEXT_TMP.fetch_add(1, Ordering::Relaxed)));
     let mut child = Command::new(&s.piper_path)
         .arg("--model")
         .arg(&s.model_path)
@@ -105,11 +138,26 @@ pub fn synthesize(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<Pat
         .ok_or("no stdin")?
         .write_all(text.as_bytes())
         .map_err(|e| e.to_string())?;
+    let started = Instant::now();
+    while child.try_wait().map_err(|e| e.to_string())?.is_none() {
+        if started.elapsed() > Duration::from_secs(15) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&tmp);
+            return Err("Piper timed out after 15 seconds.".into());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
     let output = child.wait_with_output().map_err(|e| e.to_string())?;
     if !output.status.success() || !tmp.is_file() {
         let err = String::from_utf8_lossy(&output.stderr);
         let last = err.lines().last().unwrap_or("unknown error");
+        let _ = std::fs::remove_file(&tmp);
         return Err(format!("Piper failed: {last}"));
+    }
+    if out.is_file() {
+        let _ = std::fs::remove_file(&tmp);
+        return Ok(out);
     }
     std::fs::rename(&tmp, &out).map_err(|e| e.to_string())?;
     Ok(out)
@@ -118,6 +166,9 @@ pub fn synthesize(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<Pat
 /// Queue a callout. Urgent news clears queued chatter, duplicates are
 /// dropped, and routine calls don't pile up behind a backlog.
 fn enqueue(queue: &mut Vec<Callout>, c: Callout) {
+    if c.expected_position.is_some() {
+        queue.retain(|q| q.expected_position.is_none());
+    }
     if queue.iter().any(|q| q.text == c.text) {
         return;
     }
@@ -129,7 +180,7 @@ fn enqueue(queue: &mut Vec<Callout>, c: Callout) {
     queue.push(c);
 }
 
-fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on_error: impl Fn(String)) {
+fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, context: Arc<Context>, on_error: impl Fn(String)) {
     // The audio device is opened lazily and kept for the life of the thread.
     let mut audio: Option<(rodio::OutputStream, rodio::OutputStreamHandle)> = None;
     let mut queue: Vec<Callout> = Vec::new();
@@ -159,7 +210,7 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on
             }
             None => {}
         }
-        queue.retain(|c| c.at.elapsed() < c.priority.max_age());
+        queue.retain(|c| context.current(c));
         // Highest priority first, oldest first within a priority.
         queue.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.at.cmp(&b.at)));
         if queue.is_empty() {
@@ -177,6 +228,22 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on
                 continue;
             }
         };
+        // Recheck after synthesis: passes and urgent news can happen while
+        // Piper loads the model. Never play an obsolete position afterward.
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                Msg::Say(next) => enqueue(&mut queue, next),
+                Msg::Configure(s) => settings = s,
+            }
+        }
+        queue.retain(|q| context.current(q));
+        if !settings.enabled || !context.current(&c) {
+            continue;
+        }
+        if queue.iter().any(|q| q.priority > c.priority) {
+            enqueue(&mut queue, c);
+            continue;
+        }
         if audio.is_none() {
             audio = rodio::OutputStream::try_default().ok();
         }
@@ -184,25 +251,63 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, on
             on_error("No audio output device found.".into());
             continue;
         };
-        if let Err(e) = play(handle, &wav, settings.volume) {
+        if let Err(e) = play(handle, &wav, &c, &rx, &mut settings, &mut queue, &context) {
             on_error(format!("Playback failed: {e}"));
         }
     }
 }
 
-fn play(handle: &rodio::OutputStreamHandle, wav: &Path, volume: f32) -> Result<(), String> {
+fn play(handle: &rodio::OutputStreamHandle, wav: &Path, call: &Callout, rx: &Receiver<Msg>, settings: &mut VoiceSettings, queue: &mut Vec<Callout>, context: &Context) -> Result<(), String> {
     let file = std::fs::File::open(wav).map_err(|e| e.to_string())?;
     let source = rodio::Decoder::new(BufReader::new(file)).map_err(|e| e.to_string())?;
     let sink = rodio::Sink::try_new(handle).map_err(|e| e.to_string())?;
-    sink.set_volume(volume.clamp(0.0, 1.0));
+    sink.set_volume(settings.volume.clamp(0.0, 1.0));
     sink.append(source);
-    sink.sleep_until_end();
+    while !sink.empty() {
+        match rx.recv_timeout(Duration::from_millis(25)) {
+            Ok(Msg::Say(c)) => {
+                let interrupt = c.priority > call.priority && context.current(&c);
+                enqueue(queue, c);
+                if interrupt {
+                    sink.stop();
+                    break;
+                }
+            }
+            Ok(Msg::Configure(s)) => {
+                *settings = s;
+                sink.set_volume(settings.volume.clamp(0.0, 1.0));
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                sink.stop();
+                break;
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+        }
+        if !settings.enabled || !context.current(call) {
+            sink.stop();
+            break;
+        }
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn position_calls_expire_when_position_or_session_changes() {
+        let context = Context::default();
+        context.position.store(3, Ordering::Release);
+        let mut c = Callout::new(Priority::Normal, "P3.");
+        c.expected_position = Some(3);
+        assert!(context.current(&c));
+        context.position.store(2, Ordering::Release);
+        assert!(!context.current(&c));
+        context.position.store(3, Ordering::Release);
+        context.generation.fetch_add(1, Ordering::AcqRel);
+        assert!(!context.current(&c));
+    }
 
     #[test]
     fn high_priority_supersedes_chatter() {

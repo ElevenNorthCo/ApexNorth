@@ -63,6 +63,7 @@ pub struct Call {
     /// Speak straight away, even mid-corner.
     pub urgent: bool,
     pub text: String,
+    pub expected_position: Option<i16>,
 }
 
 impl Call {
@@ -76,12 +77,24 @@ impl Call {
             severity: 0,
             urgent: priority == Priority::High,
             text: text.into(),
+            expected_position: None,
         }
     }
 
     pub fn cooldown(mut self, secs: u64) -> Call {
         self.cooldown = Duration::from_secs(secs);
         self
+    }
+
+    pub fn position(mut self, position: i16) -> Call {
+        self.expected_position = Some(position);
+        self
+    }
+
+    fn into_callout(self) -> Callout {
+        let mut c = Callout::new(self.priority, self.text);
+        c.expected_position = self.expected_position;
+        c
     }
 
     pub fn severity(mut self, s: u8) -> Call {
@@ -130,7 +143,7 @@ impl Director {
                 continue;
             }
             if c.urgent {
-                out.push(Callout::new(c.priority, c.text));
+                out.push(c.into_callout());
             } else {
                 let deadline = now + max_hold(c.priority);
                 self.held.push((c, deadline));
@@ -165,7 +178,7 @@ impl Director {
         let mut keep = vec![];
         for (c, deadline) in self.held.drain(..) {
             if calm || (now >= deadline && c.priority != Priority::Low) {
-                out.push(Callout::new(c.priority, c.text));
+                out.push(c.into_callout());
             } else if now < deadline {
                 keep.push((c, deadline));
             }
@@ -173,6 +186,11 @@ impl Director {
         self.held = keep;
         out.sort_by(|a, b| b.priority.cmp(&a.priority));
         out
+    }
+
+    /// A held position announcement is obsolete as soon as the position changes.
+    pub fn retain_position(&mut self, current: Option<i16>) {
+        self.held.retain(|(c, _)| c.expected_position.is_none() || c.expected_position == current);
     }
 
     #[cfg(test)]

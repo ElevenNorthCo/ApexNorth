@@ -18,7 +18,7 @@ use crate::settings::ChatterLevel::{self, Chatty, CrewChief, Minimal, Normal};
 
 /// A new race position must hold this long before it's announced, so a
 /// pass and re-pass becomes one call about the net change.
-const POSITION_SETTLE: Duration = Duration::from_secs(3);
+const POSITION_SETTLE: Duration = Duration::from_secs(4);
 /// Opening shuffle: wait longer and sum it up as the start.
 const START_PHASE: Duration = Duration::from_secs(25);
 const START_SETTLE: Duration = Duration::from_secs(6);
@@ -95,9 +95,10 @@ impl Engineer {
                 calls.push(Call::new(Topic::RaceStart, Minimal, Priority::High, "race.start", "Lights out. Go, go, go!"));
             }
             EngineEvent::PositionChanged { to } => {
-                calls.push(Call::new(Topic::Position, Normal, Priority::Low, "grid.slot", format!("Grid slot P{to}.")));
+                calls.push(Call::new(Topic::Position, Normal, Priority::Low, "grid.slot", format!("Grid slot P{to}.")).position(*to));
             }
             EngineEvent::RacePositionChanged { from, to } => {
+                self.director.retain_position(Some(*to));
                 self.pos_said.get_or_insert(*from);
                 self.pos_now = Some(*to);
                 self.pos_changed_at = Some(now);
@@ -149,12 +150,13 @@ impl Engineer {
 
     pub fn on_live(&mut self, s: &LiveState, cfg: &EngineerConfig, now: Instant) -> Vec<Callout> {
         self.sync_driver(cfg);
+        self.director.retain_position(s.position);
         if s.lap != self.live_lap {
             self.live_lap = s.lap;
             self.lap_start_fuel = s.fuel_pct;
         }
         if s.paused || !s.on_track {
-            return self.director.release(true, now);
+            return vec![];
         }
         let mut calls = vec![];
         if !self.grid_announced && s.lap.is_none() {
@@ -169,7 +171,7 @@ impl Engineer {
                         Some(name) => format!("You start P{p} of {n}. Stay out of trouble into turn one. Good luck out there, {name}."),
                         None => format!("You start P{p} of {n}. Stay out of trouble into turn one."),
                     },
-                ));
+                ).position(p));
             }
         }
         let cx = LiveCtx {
@@ -451,11 +453,12 @@ impl Engineer {
                 self.box_called_lap = Some(cur);
                 let text = match p.driver {
                     PitDriver::Both => "Box this lap. Both fuel and tyre performance favor the stop.".to_string(),
-                    PitDriver::Tyres => format!("Box this lap. Fuel can make lap {}, but the tyres favor stopping now.", p.fuel_latest),
-                    PitDriver::Fuel if s.window == PitWindow::BoxNow => "Box, box. Box this lap. Fuel won't make another.".into(),
-                    PitDriver::Fuel => "Box, box. Box this lap.".into(),
+                    PitDriver::Tyres => "Consider a tyre stop this lap. The pace trend suggests the tyres are fading.".into(),
+                    PitDriver::Fuel if s.window == PitWindow::BoxNow => "Box, box. Fuel is at the estimated reserve limit.".into(),
+                    PitDriver::Fuel => format!("Recommended stop this lap. Estimated fuel limit is lap {}.", p.fuel_latest),
                 };
-                out.push(Call::new(Topic::PitStrategy, Minimal, Priority::High, "pit.box", text));
+                let urgent = s.window == PitWindow::BoxNow;
+                out.push(Call::new(Topic::PitStrategy, if urgent { Minimal } else { Normal }, if urgent { Priority::High } else { Priority::Normal }, "pit.box", text));
             }
         } else {
             let (e, l) = (s.earliest_pit_lap.unwrap_or(p.lap), s.latest_pit_lap.unwrap_or(p.lap));
@@ -504,7 +507,7 @@ impl Engineer {
             let text = match t.performance {
                 TyrePerformance::Declining => "Tyre performance is starting to drop.",
                 TyrePerformance::Poor => "Tyre performance is dropping quickly.",
-                _ => "The tyres are finished. Pace is falling away.",
+                _ => "Pace is falling away. Estimated tyre degradation is high.",
             };
             out.push(Call::new(Topic::Tyres, Normal, Priority::Normal, "tyre.deg", text).severity(t.performance as u8));
             if let Some(loss) = t.estimated_loss_per_lap_ms.filter(|l| *l >= 150 && t.confidence >= TYRE_CONFIDENCE) {
@@ -543,6 +546,10 @@ impl Engineer {
     /// the last call, cheering gains and steadying the driver after losses.
     fn position_change_call(&mut self, s: &LiveState, now: Instant) -> Option<Call> {
         let (said, cur, at) = (self.pos_said?, self.pos_now?, self.pos_changed_at?);
+        // Don't announce the previous confirmed position during another pass.
+        if s.position != Some(cur) {
+            return None;
+        }
         if cur == said {
             self.pos_changed_at = None;
             return None;
@@ -610,7 +617,7 @@ impl Engineer {
                 ),
             )
         };
-        Some(Call::new(Topic::Position, level, Priority::Normal, "pos.change", text))
+        Some(Call::new(Topic::Position, level, Priority::Normal, "pos.change", text).position(cur))
     }
 
     /// After a few laps in the same place: keep the driver chasing, or calm
@@ -641,7 +648,7 @@ impl Engineer {
             )
         };
         self.laps_since_pos_change = 0;
-        Some(Call::new(Topic::Position, Chatty, Priority::Normal, "pos.hold", text).cooldown(150))
+        Some(Call::new(Topic::Position, Chatty, Priority::Normal, "pos.hold", text).position(pos).cooldown(150))
     }
 
     fn pre_pit_call(&mut self, s: &LiveState) -> Option<Call> {
@@ -655,8 +662,14 @@ impl Engineer {
         }
         self.prepit_lap = Some(lap);
         let tight = self.strategy.as_ref().is_some_and(|st| st.window == PitWindow::BoxNow);
-        let text = if tight { "Pit this lap. Fuel will be tight if you continue." } else { "Box this lap. Get ready to pit." };
-        Some(Call::new(Topic::PitStrategy, Minimal, Priority::High, "pit.prepit", text))
+        let text = if tight {
+            "Box this lap. Fuel is at the estimated reserve limit.".to_string()
+        } else if p.driver == PitDriver::Tyres {
+            "Tyre stop recommended this lap. Check your pace before extending.".to_string()
+        } else {
+            format!("Planned stop this lap. Estimated fuel limit is lap {}.", p.fuel_latest)
+        };
+        Some(Call::new(Topic::PitStrategy, if tight { Minimal } else { Normal }, if tight { Priority::High } else { Priority::Normal }, "pit.prepit", text))
     }
 }
 
@@ -770,7 +783,7 @@ mod tests {
         }
         let strategy = f.strategy(fuel_pct, next_lap, total);
         let tyres = TyreEstimate::default();
-        let plan = strategy.as_ref().and_then(|s| crate::session::strategy::plan(s, &tyres, next_lap));
+        let plan = strategy.as_ref().and_then(|s| crate::session::strategy::plan(s, &tyres, next_lap, total));
         LapContext {
             session_best_before: Some(90_000),
             reference_before: Some(90_000),

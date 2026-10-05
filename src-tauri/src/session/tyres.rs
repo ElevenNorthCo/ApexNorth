@@ -7,6 +7,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TyrePerformance {
+    Unknown,
     Fresh,
     Stable,
     Declining,
@@ -29,7 +30,7 @@ pub struct TyreEstimate {
 impl Default for TyreEstimate {
     fn default() -> Self {
         TyreEstimate {
-            performance: TyrePerformance::Fresh,
+            performance: TyrePerformance::Unknown,
             estimated_loss_per_lap_ms: None,
             projected_problem_lap: None,
             confidence: 0.0,
@@ -60,7 +61,8 @@ impl TyreModel {
 
     pub fn record_lap(&mut self, lap_no: i16, time_ms: u32, valid: bool, is_pit: bool, fuel_used_pct: Option<f32>) {
         if is_pit {
-            // New tyres (or at least a new stint) after a stop.
+            // The packet cannot confirm a tyre change. Rebaseline after the
+            // interruption, but report Unknown rather than claiming new tyres.
             self.reset();
             return;
         }
@@ -78,7 +80,6 @@ impl TyreModel {
         if self.stint_laps <= 2 {
             return est;
         }
-        est.performance = TyrePerformance::Stable;
         let mut times: Vec<f32> = self.laps.iter().map(|l| l.1).collect();
         times.sort_by(|a, b| a.total_cmp(b));
         let Some(median) = times.get(times.len() / 2).copied() else { return est };
@@ -88,6 +89,7 @@ impl TyreModel {
         if n < 3 {
             return est;
         }
+        est.performance = TyrePerformance::Stable;
         let mx = pts.iter().map(|p| p.0).sum::<f32>() / n as f32;
         let my = pts.iter().map(|p| p.1).sum::<f32>() / n as f32;
         let sxx: f32 = pts.iter().map(|p| (p.0 - mx).powi(2)).sum();
@@ -164,6 +166,6 @@ mod tests {
         }
         assert_eq!(m.estimate().performance, TyrePerformance::Stable);
         m.record_lap(7, 110_000, false, true, None);
-        assert_eq!(m.estimate().performance, TyrePerformance::Fresh);
+        assert_eq!(m.estimate().performance, TyrePerformance::Unknown);
     }
 }

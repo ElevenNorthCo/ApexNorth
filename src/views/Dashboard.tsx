@@ -423,7 +423,10 @@ function pitBadge(l: LiveState | null): [string, string, boolean] | undefined {
   const s = l?.strategy;
   if (!l || !s) return undefined;
   const plan = l.pitPlan;
-  if (s.window === "box_now" || (plan && l.lap != null && plan.lap <= l.lap)) return ["BOX THIS LAP", "#dc2626", true];
+  if (s.window === "box_now") return ["FUEL LIMIT · BOX THIS LAP", "#dc2626", true];
+  if (plan && l.lap != null && plan.lap <= l.lap) {
+    return [plan.driver === "tyres" ? "TYRE STOP ADVISED" : `STOP ADVISED · FUEL LIMIT L${plan.fuelLatest}`, "#b9770e", false];
+  }
   if (s.stopsRequired > 0 && s.earliestPitLap != null && s.latestPitLap != null) {
     const target = plan?.lap ?? s.targetPitLap;
     return [`PIT L${s.earliestPitLap}–${s.latestPitLap} · TARGET L${target}`, s.window === "open" ? "#16a34a" : "#4b5552", false];
@@ -463,11 +466,11 @@ function Fuel({ l }: { l: LiveState | null }) {
       </svg>
       <div className="absolute left-[58px] right-[92px] top-[20px] h-[22px] rounded-[6px] border border-white/10 bg-[#0b100f] p-[3px]">
         <div
-          className="h-full rounded-[4px] transition-[width] duration-500"
+          className="h-full rounded-[4px] transition-[width] duration-100"
           style={{ width: `${Math.max(0, Math.min(100, pct ?? 0))}%`, background: `linear-gradient(90deg, ${c}, color-mix(in srgb, ${c} 70%, #fff))`, boxShadow: `0 0 10px ${c}` }}
         />
       </div>
-      <div className="num absolute right-[16px] top-[18px] text-[24px] font-bold leading-none">{pct != null ? `${Math.round(pct)}%` : DASH}</div>
+      <div title="Reported tank level; no strategy reserve is subtracted" className="num absolute right-[16px] top-[18px] text-[22px] font-bold leading-none">{pct != null ? `${pct.toFixed(1)}%` : DASH}</div>
       <div className="absolute inset-x-[30px] top-[56px] flex items-center">
         {col(l?.fuelPerLapPct != null ? `${fmt(l.fuelPerLapPct, 1)}%` : DASH, "Per Lap")}
         <div className="h-[30px] w-px bg-white/15" />

@@ -155,6 +155,7 @@ impl Handler for LiveHandler {
         for ev in self.engine.on_packet(&p) {
             match &ev {
                 EngineEvent::SessionStarted { car_code, total_laps } => {
+                    self.voice.clear();
                     self.session = Some(SessionCtx {
                         car_code: *car_code,
                         total_laps: *total_laps,
@@ -163,7 +164,10 @@ impl Handler for LiveHandler {
                         track: None,
                     });
                 }
-                EngineEvent::SessionEnded => self.session = None,
+                EngineEvent::SessionEnded => {
+                    self.voice.clear();
+                    self.session = None;
+                }
                 EngineEvent::LapCompleted(lap, _) => self.record_lap(lap),
                 EngineEvent::LapInvalidated { lap_no, reason } => {
                     let _ = self.app.emit("lap_invalid", LapInvalid { lap_no: *lap_no, reason: reason.as_str() });
@@ -171,8 +175,10 @@ impl Handler for LiveHandler {
                 _ => {}
             }
             let c = self.engineer.on_event(&ev, &cfg, now);
+            self.voice.update_position(self.engine.live().position);
             self.speak(c);
         }
+        self.voice.update_position(self.engine.live().position);
         let c = self.engineer.on_live(self.engine.live(), &cfg, now);
         self.speak(c);
 
@@ -205,6 +211,7 @@ impl Handler for LiveHandler {
                     .ok();
             }
         } else {
+            self.voice.clear();
             self.awake = None;
         }
     }
@@ -213,6 +220,7 @@ impl Handler for LiveHandler {
 fn start_link(app: &AppHandle, state: &AppState, ip: Option<IpAddr>) {
     // Stop the old link first so it releases the UDP port.
     drop(state.link.lock().take());
+    state.voice.clear();
     let handler = LiveHandler {
         app: app.clone(),
         db: state.db.clone(),

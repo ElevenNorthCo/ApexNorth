@@ -37,7 +37,7 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
 
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || samples.length < 2) return;
+    if (!canvas) return;
     const draw = () => {
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.clientWidth;
@@ -47,19 +47,20 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
       const ctx = canvas.getContext("2d")!;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
+      if (samples.length < 2 || w <= 80 || h <= 80) return;
 
       // Frame: the whole lap, the selected sector, or follow the car when zoomed.
       const framed = range ? samples.slice(range[0], range[1] + 1) : samples;
       const xs = framed.map((s) => s.x);
       const ys = framed.map((s) => -s.z);
-      const minX = Math.min(...xs);
-      const maxX = Math.max(...xs);
-      const minY = Math.min(...ys);
-      const maxY = Math.max(...ys);
+      const minX = xs.reduce((a, b) => Math.min(a, b), Infinity);
+      const maxX = xs.reduce((a, b) => Math.max(a, b), -Infinity);
+      const minY = ys.reduce((a, b) => Math.min(a, b), Infinity);
+      const maxY = ys.reduce((a, b) => Math.max(a, b), -Infinity);
       const pad = 40;
       const fit = Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2) / (maxY - minY || 1));
       const scale = fit * zoom;
-      const car = samples[Math.min(cursor, samples.length - 1)];
+      const car = samples[Math.max(0, Math.min(cursor, samples.length - 1))];
       const cx = zoom > 1 ? car.x : (minX + maxX) / 2;
       const cy = zoom > 1 ? -car.z : (minY + maxY) / 2;
       const px = (x: number) => w / 2 + (x - cx) * scale;
@@ -130,17 +131,33 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
         ctx.setLineDash([]);
       }
 
-      // Racing line (dimmed outside the selected sector)
-      path(samples);
-      ctx.strokeStyle = range ? "rgba(177,140,242,0.3)" : "#b18cf2";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      if (range) {
-        path(samples, range[0], range[1]);
-        ctx.strokeStyle = "#b18cf2";
-        ctx.lineWidth = 2.5;
+      // Input trace: braking is a red dashed line, throttle is green and
+      // solid, coasting is a thin dotted line. Pressure controls thickness.
+      // Group matching segments so playback doesn't issue a stroke per sample.
+      const style = (i: number) => {
+        const s = samples[i];
+        const state = s.brk > 5 ? "brake" : s.thr > 5 ? "throttle" : "coast";
+        const pressure = state === "brake" ? s.brk : state === "throttle" ? s.thr : 0;
+        const band = Math.min(4, Math.floor(pressure / 25));
+        const dim = !!range && (i < range[0] || i > range[1]);
+        return { state, band, dim, key: `${state}:${band}:${dim}` };
+      };
+      let start = 0;
+      let current = style(0);
+      for (let i = 1; i < samples.length; i++) {
+        const next = style(i);
+        if (next.key === current.key && i < samples.length - 1) continue;
+        path(samples, start, i);
+        ctx.strokeStyle = current.state === "brake" ? "#ff626b" : current.state === "throttle" ? "#39ff7a" : "#b5bfc1";
+        ctx.lineWidth = current.state === "coast" ? 1.5 : 2.5 + current.band * 0.5;
+        ctx.globalAlpha = current.dim ? 0.2 : 1;
+        ctx.setLineDash(current.state === "brake" ? [5, 2] : current.state === "coast" ? [1, 5] : []);
         ctx.stroke();
+        start = i;
+        current = next;
       }
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
 
       if (ghost) {
         const c = ghost;
@@ -208,14 +225,21 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
     >
       <canvas ref={ref} className="h-full w-full" />
       <canvas ref={mini} className="absolute right-4 top-4 h-[96px] w-[96px]" />
+      <div className="tech absolute left-4 top-4 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-[#0a100f]/90 px-3 py-2 text-[11px]" aria-label="Driving input legend">
+        <span className="flex items-center gap-2"><span className="w-5 border-t-[3px] border-dashed border-[#ff626b]" />Brake</span>
+        <span className="flex items-center gap-2"><span className="w-5 border-t-[3px] border-[#39ff7a]" />Throttle</span>
+        <span className="flex items-center gap-2"><span className="w-5 border-t border-dotted border-[#b5bfc1]" />Coast</span>
+      </div>
       <div className="absolute bottom-5 right-4 flex flex-col gap-2">
         <button
+          aria-label="Zoom in"
           onClick={() => onZoom(Math.min(12, zoom * 1.5))}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0e1413] border border-white/10 text-2xl text-white/90 hover:border-accent/60"
         >
           +
         </button>
         <button
+          aria-label="Zoom out"
           onClick={() => onZoom(Math.max(1, zoom / 1.5))}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0e1413] border border-white/10 text-2xl text-white/90 hover:border-accent/60"
         >
