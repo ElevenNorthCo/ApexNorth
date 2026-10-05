@@ -23,6 +23,7 @@ export function TelemetryChart({
   xRange,
   cursorD,
   onCursor,
+  onScrubStart,
   zeroLine = false,
 }: {
   x: number[];
@@ -32,6 +33,8 @@ export function TelemetryChart({
   xRange: [number, number];
   cursorD: number | null;
   onCursor: (d: number) => void;
+  /** Pointer pressed on the chart: the parent pauses playback and scrubs from here. */
+  onScrubStart?: (d: number) => void;
   zeroLine?: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -39,6 +42,8 @@ export function TelemetryChart({
   const marker = useRef<HTMLDivElement | null>(null);
   const onCursorRef = useRef(onCursor);
   onCursorRef.current = onCursor;
+  const onScrubRef = useRef(onScrubStart);
+  onScrubRef.current = onScrubStart;
   const cursorRef = useRef(cursorD);
   cursorRef.current = cursorD;
 
@@ -127,6 +132,11 @@ export function TelemetryChart({
     m.style.cssText = "position:absolute;top:0;bottom:0;width:1.5px;background:#fff;pointer-events:none;transform:translateX(-0.75px)";
     u.over.appendChild(m);
     marker.current = m;
+    u.over.style.cursor = "ew-resize";
+    u.over.addEventListener("pointerdown", (e) => {
+      const rect = u.over.getBoundingClientRect();
+      onScrubRef.current?.(u.posToVal(e.clientX - rect.left, "x"));
+    });
     placeMarker();
 
     const ro = new ResizeObserver(() => {

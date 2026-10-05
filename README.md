@@ -340,6 +340,16 @@ The tests cover:
 - [x] Race position callouts: gains, losses, lead, podium, start summary, chase encouragement
 - [x] Track photos for all 41 venues
 
+### ✅ Phase 3.7: Fixes & race conditions
+- [x] Laps close at the start/finish line: a packet gap at the line is split using the official lap time, instead of leaving a hole and shifting the next lap's timing
+- [x] Lap compare matches the reference lap by position, and the ghost car runs at the same lap time
+- [x] Grab a chart during playback to pause and scrub
+- [x] Open-wheel car on the dashboard tyre panel
+- [x] Activity delta: against your previous best at the track (same car first), or best vs. average on a first visit
+- [x] Driver name in Settings, used by the engineer ("Good luck out there, Michael.")
+- [x] Race conditions per session: single player or online, BoP, tyre wear and fuel multipliers (noted by hand; fuel use is measured)
+- [ ] Use the noted tyre wear and fuel multipliers in the strategy model, and compare pace only across matching conditions
+
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
 - [ ] Bundle Piper and a default voice as a Tauri sidecar

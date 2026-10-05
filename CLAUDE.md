@@ -8,7 +8,7 @@ The README has the full feature list, the protocol details, and the **phase road
 
 ```bash
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
-cd src-tauri && cargo test        # Rust unit tests (fast, ~63 tests)
+cd src-tauri && cargo test        # Rust unit tests (fast, ~64 tests)
 npx tsc --noEmit                  # type-check the frontend
 npm run build                     # frontend production build
 npm run tauri build -- --bundles app,dmg   # macOS release → src-tauri/target/release/bundle/
@@ -55,6 +55,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 ### Backend (Rust) rules
 - Heavy logic stays in Rust. The React UI only renders.
 - **Lap timing:**
+  - Laps are joined at the line (`join_at_line` in `engine.rs`): a packet gap across the line is split with the official lap time, so the old lap ends and the new one starts (t = 0, d = 0) at the line. Before this, real PS5 laps started ~2.7 s / 150 m past the line.
   - The current lap time comes from `packet_id` ticks (60 Hz).
   - A finished lap uses the game's `last_lap_ms`. Sample `t` values are rescaled to match it.
   - A lap is invalid only with an `InvalidReason` (joined mid-lap, rewind/reset, confirmed telemetry jump, too short, pit lap). A position jump has to be impossible over the real elapsed time (packet-id gap) *and* confirmed by 3 packets. Stale or reordered packets are dropped. Don't loosen this back to single-packet checks; it made real laps "not count".
@@ -96,6 +97,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - `components/Tile.tsx` is the neon panel (`notch` puts the label in the top border).
   - Numbers use the `.num` class (JetBrains Mono, slashed zero).
 - **Artwork:** all 41 venues have a 1280×720 photo in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob. `TrackArt` (`components/Art.tsx`) shows it on Activity cards (`fade="right"`) and the Session header (`fade="left"`); unrecognised tracks get generated art. Don't add a Settings section for artwork (the user asked for none). No car images: the user didn't like the generated silhouette, so cards show make and model text. Flags are SVGs in `components/Flag.tsx`.
+- **Race conditions:** `sessions.conditions` (JSON `SessionConditions`: mode offline/online, bop, tyreWear, fuelRate), set with `set_session_conditions` from the Session view; Activity shows them as chips. GT7 sends none of these.
 - **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
 - **Charts:**
   - Charts use uPlot through `components/TelemetryChart.tsx`.

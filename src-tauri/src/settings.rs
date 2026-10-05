@@ -84,12 +84,14 @@ pub struct Settings {
     pub auto_connect: bool,
     /// "metric" or "imperial"
     pub units: String,
+    /// What the engineer calls the driver. Empty = no name.
+    pub driver_name: String,
     pub voice: VoiceSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { last_ip: None, auto_connect: true, units: "metric".into(), voice: VoiceSettings::default() }
+        Settings { last_ip: None, auto_connect: true, units: "metric".into(), driver_name: String::new(), voice: VoiceSettings::default() }
     }
 }
 

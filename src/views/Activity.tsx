@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type SessionKind, type SessionSummary } from "../lib/api";
 import { carName, delta, lapTime, shortDate, timeOfDay } from "../lib/format";
-import { KINDS, carClass, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
+import { KINDS, carClass, conditionTags, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
 import { useStore } from "../lib/store";
 import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
@@ -19,14 +19,21 @@ export function Activity() {
     api.listSessions().then(setSessions).catch((e) => setError(String(e)));
   }, [version]);
 
-  /** Best lap compared with your previous best at the same track (sessions arrive newest first). */
+  /**
+   * Best lap against your previous best at the same track (sessions arrive
+   * newest first), preferring the same car. A first visit compares the best
+   * lap with the session's average instead.
+   */
   const improvement = useMemo(() => {
-    const out = new Map<number, number>();
+    const out = new Map<number, Gain>();
     const all = sessions ?? [];
     all.forEach((s, i) => {
-      if (s.bestMs == null || s.trackId == null) return;
-      const earlier = all.slice(i + 1).filter((e) => e.trackId === s.trackId && e.bestMs != null);
-      if (earlier.length) out.set(s.id, s.bestMs - Math.min(...earlier.map((e) => e.bestMs!)));
+      if (s.bestMs == null) return;
+      const earlier = all.slice(i + 1).filter((e) => s.trackId != null && e.trackId === s.trackId && e.bestMs != null);
+      const sameCar = earlier.filter((e) => e.carCode === s.carCode);
+      const pool = sameCar.length ? sameCar : earlier;
+      if (pool.length) out.set(s.id, { ms: s.bestMs - Math.min(...pool.map((e) => e.bestMs!)), label: "Vs prev best" });
+      else if (s.avgMs != null && s.lapCount > 1) out.set(s.id, { ms: s.bestMs - Math.round(s.avgMs), label: "Best vs avg" });
     });
     return out;
   }, [sessions]);
@@ -83,7 +90,12 @@ export function Activity() {
   );
 }
 
-function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: number | undefined; onOpen: () => void }) {
+interface Gain {
+  ms: number;
+  label: string;
+}
+
+function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | undefined; onOpen: () => void }) {
   const kind = kindInfo(sessionKind(s));
   const [title, subtitle] = trackTitle(s);
   const fullCar = carName(s.carCode, s.carName);
@@ -130,9 +142,14 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: number | un
           <div className="tech truncate text-[14px] text-white/70">{maker}</div>
           <div className="tech line-clamp-2 text-[17px] font-semibold leading-snug">{model || maker}</div>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {cls && <Chip color="#b44cff">{cls}</Chip>}
           <Chip color={c}>{kind.label}</Chip>
+          {conditionTags(s.conditions).map((t) => (
+            <Chip key={t} color="#ffc81a">
+              {t}
+            </Chip>
+          ))}
         </div>
       </div>
 
@@ -142,8 +159,8 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: number | un
           {lapTime(s.bestMs)}
         </Stat>
         <Stat label="Avg Lap">{lapTime(s.avgMs != null ? Math.round(s.avgMs) : null)}</Stat>
-        <Stat label="Delta" color={gain == null ? undefined : gain <= 0 ? "#39ff7a" : "#ff9f1a"}>
-          {gain == null ? "—" : delta(gain)}
+        <Stat label={gain?.label ?? "Delta"} color={gain == null ? undefined : gain.ms <= 0 ? "#39ff7a" : "#ff9f1a"}>
+          {gain == null ? "—" : delta(gain.ms)}
         </Stat>
       </div>
 

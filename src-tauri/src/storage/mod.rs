@@ -3,7 +3,7 @@
 //! Lap samples are stored as a zstd-compressed bincode blob.
 
 use rusqlite::{params, Connection, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::catalog::{cars, tracks};
@@ -47,10 +47,27 @@ pub struct SessionSummary {
     /// Session type the user tagged ("practice", "qualifying", "race",
     /// "time_trial"), or None to infer it from the lap count.
     pub kind: Option<String>,
+    /// Race settings the user noted (GT7 doesn't send them).
+    pub conditions: Option<SessionConditions>,
     /// Catalog layout the track was recognised as, with its venue and country.
     pub layout_id: Option<String>,
     pub venue: Option<String>,
     pub country: Option<String>,
+}
+
+/// Settings a race was run with, tagged by the user. GT7 sends none of
+/// these, so every field is optional.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SessionConditions {
+    /// "offline" (single player / career), "online" (Sport mode, lobby).
+    pub mode: Option<String>,
+    /// Balance of Performance on.
+    pub bop: Option<bool>,
+    /// Tyre wear multiplier (0 = off).
+    pub tyre_wear: Option<u8>,
+    /// Fuel consumption multiplier (0 = off).
+    pub fuel_rate: Option<u8>,
 }
 
 /// Session types the user can tag a session with.
@@ -179,6 +196,14 @@ impl Db {
         if !has_kind {
             // User-chosen session type (see SESSION_KINDS); NULL = inferred.
             conn.execute_batch("ALTER TABLE sessions ADD COLUMN kind TEXT").map_err(err)?;
+        }
+        let has_conditions: bool = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'conditions'", [], |r| r.get::<_, i64>(0))
+            .map_err(err)?
+            > 0;
+        if !has_conditions {
+            // JSON SessionConditions; NULL = not noted.
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN conditions TEXT").map_err(err)?;
         }
         Ok(Db { conn })
     }
@@ -450,7 +475,7 @@ impl Db {
             .prepare(
                 "SELECT s.id, s.track_id, t.name, s.car_code, s.started_at, s.total_laps,
                         COUNT(l.id), MIN(CASE WHEN l.is_valid = 1 THEN l.time_ms END), t.outline,
-                        AVG(CASE WHEN l.is_valid = 1 AND l.is_pit = 0 THEN l.time_ms END), s.kind, t.layout_id
+                        AVG(CASE WHEN l.is_valid = 1 AND l.is_pit = 0 THEN l.time_ms END), s.kind, t.layout_id, s.conditions
                  FROM sessions s
                  LEFT JOIN tracks t ON t.id = s.track_id
                  JOIN laps l ON l.session_id = s.id
@@ -477,6 +502,7 @@ impl Db {
                         .unwrap_or_default(),
                     avg_ms: r.get(9)?,
                     kind: r.get(10)?,
+                    conditions: r.get::<_, Option<String>>(12)?.and_then(|c| serde_json::from_str(&c).ok()),
                     venue: layout.map(|l| l.venue.clone()),
                     country: layout.map(|l| l.country.clone()),
                     layout_id,
@@ -533,6 +559,20 @@ impl Db {
                     samples: decode(&blob)?,
                 })
             })
+    }
+
+    /// Note the race settings a session was run with (None clears them).
+    pub fn set_session_conditions(&self, session_id: i64, c: Option<&SessionConditions>) -> Result<()> {
+        if let Some(m) = c.and_then(|c| c.mode.as_deref()) {
+            if !["offline", "online"].contains(&m) {
+                return Err(format!("unknown race mode {m:?}"));
+            }
+        }
+        let json = c.filter(|c| **c != SessionConditions::default()).map(serde_json::to_string).transpose().map_err(err)?;
+        self.conn
+            .execute("UPDATE sessions SET conditions = ?1 WHERE id = ?2", params![json, session_id])
+            .map_err(err)?;
+        Ok(())
     }
 
     /// Tag a session as practice, qualifying, race or time trial (None = infer).
@@ -611,6 +651,12 @@ mod tests {
         assert!(db.set_session_kind(s, Some("warmup")).is_err());
         db.set_session_kind(s, None).unwrap();
         assert_eq!(db.list_sessions().unwrap()[0].kind, None);
+        let c = SessionConditions { mode: Some("online".into()), bop: Some(true), tyre_wear: Some(3), fuel_rate: Some(2) };
+        db.set_session_conditions(s, Some(&c)).unwrap();
+        assert_eq!(db.list_sessions().unwrap()[0].conditions, Some(c));
+        assert!(db.set_session_conditions(s, Some(&SessionConditions { mode: Some("split".into()), ..Default::default() })).is_err());
+        db.set_session_conditions(s, Some(&SessionConditions::default())).unwrap();
+        assert_eq!(db.list_sessions().unwrap()[0].conditions, None);
         let detail = db.lap_detail(id).unwrap();
         assert_eq!(detail.summary.invalid_reason.as_deref(), Some("rewind_or_reset"));
         assert_eq!(detail.samples.len(), 50);

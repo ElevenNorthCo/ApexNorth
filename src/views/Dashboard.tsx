@@ -192,7 +192,7 @@ function Tyres({ l }: { l: LiveState | null }) {
   return (
     <Tile notch label="Tyre Temperatures" color="#c9d2cf" style={{ left: 28, top: 174, width: 354, height: 202 }}>
       <div className="absolute inset-x-[14px] top-[100px] h-px bg-white/[0.07]" />
-      <CarTopDown className="absolute left-[145px] top-[14px]" />
+      <CarTopDown className="absolute left-[136px] top-[14px]" />
       {corner(0, "left", 24)}
       {corner(1, "right", 24)}
       {corner(2, "left", 112)}
@@ -201,32 +201,46 @@ function Tyres({ l }: { l: LiveState | null }) {
   );
 }
 
-/** Top-down car silhouette for the tyre panel. */
+/**
+ * Top-down open-wheel (F1-style) car for the tyre panel. It spans the gap
+ * between the tyre bars, and its suspension arms reach out to them, so the
+ * temperature bars read as the wheels.
+ */
 function CarTopDown({ className }: { className?: string }) {
+  const arm = { stroke: "#7d8d89", strokeWidth: 1.6, strokeLinecap: "round" as const };
   return (
-    <svg className={className} width="64" height="172" viewBox="0 0 64 172" fill="none">
+    <svg className={className} width="82" height="172" viewBox="0 0 82 172" fill="none">
       <defs>
         <linearGradient id="car-body" x1="0" x2="1">
           <stop offset="0" stopColor="#1b2422" />
-          <stop offset="0.5" stopColor="#2e3a37" />
+          <stop offset="0.5" stopColor="#33413e" />
           <stop offset="1" stopColor="#1b2422" />
         </linearGradient>
       </defs>
-      <g style={{ filter: "drop-shadow(0 0 5px rgba(57,255,122,0.55))" }}>
+      {/* Suspension: front wheels centre at y 47, rear at y 135. */}
+      <path d="M36 38 L1 44 M35 54 L1 50 M46 38 L81 44 M47 54 L81 50" {...arm} />
+      <path d="M31 126 L1 132 M31 142 L1 138 M51 126 L81 132 M51 142 L81 138" {...arm} />
+      <g style={{ filter: "drop-shadow(0 0 5px rgba(57,255,122,0.55))" }} stroke="#39ff7a" strokeOpacity="0.7" strokeWidth="1.3">
+        {/* Front wing */}
+        <path d="M5 2 H77 V7 Q41 12 5 7 Z" fill="url(#car-body)" />
+        {/* Nose, monocoque, sidepods and engine cover */}
         <path
-          d="M32 4 C46 4 54 12 55 30 L57 60 C59 64 59 70 57 74 L57 130 C57 150 52 166 32 168 C12 166 7 150 7 130 L7 74 C5 70 5 64 7 60 L9 30 C10 12 18 4 32 4 Z"
+          d="M38 9 L44 9 C45 24 47 40 48 54 L50 62 C58 70 64 80 64 92 C64 106 60 112 54 118 C50 124 48 136 47 152 L46 158 L36 158 L35 152 C34 136 32 124 28 118 C22 112 18 106 18 92 C18 80 24 70 32 62 L34 54 C35 40 37 24 38 9 Z"
           fill="url(#car-body)"
-          stroke="#39ff7a"
-          strokeOpacity="0.7"
-          strokeWidth="1.4"
         />
+        {/* Rear wing */}
+        <path d="M14 159 H68 V167 H14 Z" fill="url(#car-body)" />
       </g>
-      <path d="M15 52 C22 44 42 44 49 52 L46 74 C38 70 26 70 18 74 Z" fill="#0a0f0e" stroke="#5d6b67" strokeWidth="1" />
-      <path d="M18 116 C26 120 38 120 46 116 L48 134 C40 140 24 140 16 134 Z" fill="#0a0f0e" stroke="#5d6b67" strokeWidth="1" />
-      <path d="M20 78 H44 V112 H20 Z" fill="#141c1a" stroke="#3a4643" strokeWidth="0.8" />
-      <path d="M14 14 L22 22 M50 14 L42 22" stroke="#9fb1ac" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M14 160 H24 M40 160 H50" stroke="#ff3b4a" strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M3 62 L7 60 M61 62 L57 60" stroke="#5d6b67" strokeWidth="2" strokeLinecap="round" />
+      {/* Wing endplates */}
+      <path d="M4 0 V10 M78 0 V10 M13 156 V170 M69 156 V170" stroke="#9fb1ac" strokeWidth="1.6" strokeLinecap="round" />
+      {/* Cockpit and halo */}
+      <ellipse cx="41" cy="68" rx="5.5" ry="9" fill="#0a0f0e" stroke="#5d6b67" strokeWidth="1" />
+      <path d="M34.5 62 Q41 54 47.5 62 M41 56.5 V61" stroke="#9fb1ac" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+      {/* Airbox and sidepod inlets */}
+      <path d="M38 80 H44 V88 H38 Z" fill="#0a0f0e" stroke="#3a4643" strokeWidth="0.8" />
+      <path d="M21 84 H28 M54 84 H61" stroke="#0a0f0e" strokeWidth="2.4" strokeLinecap="round" />
+      {/* Rain light */}
+      <path d="M38.5 170 H43.5" stroke="#ff3b4a" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }

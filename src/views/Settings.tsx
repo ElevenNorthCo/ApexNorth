@@ -65,7 +65,8 @@ export function SettingsView() {
     setTesting(true);
     setMessage(null);
     try {
-      await api.testVoice("Radio check. Box this lap, box box.");
+      const name = settings.driverName?.trim();
+      await api.testVoice(name ? `Radio check, ${name}. Box this lap, box box.` : "Radio check. Box this lap, box box.");
       setMessage({ ok: true, text: "Voice is working." });
     } catch (e) {
       setMessage({ ok: false, text: String(e) });
@@ -156,6 +157,16 @@ export function SettingsView() {
         </Section>
 
         <Section title="Race engineer" color="var(--color-lap)">
+          <Row label="Driver name" hint="Your engineer uses it now and then: “Good luck out there, Michael.”">
+            <input
+              defaultValue={settings.driverName ?? ""}
+              placeholder="Your name"
+              maxLength={24}
+              onBlur={(e) => update((s) => void (s.driverName = e.target.value.trim()))}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+              className="w-48 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-[14px] outline-none focus:border-accent"
+            />
+          </Row>
           <Row label="Engineer chatter" hint={CHATTER.find((c) => c.value === v.chatter)?.hint}>
             <Segmented
               value={v.chatter}

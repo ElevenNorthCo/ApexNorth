@@ -1,4 +1,4 @@
-import type { SessionKind, SessionSummary } from "./api";
+import type { SessionConditions, SessionKind, SessionSummary } from "./api";
 
 /**
  * Track photos, one per venue: src/assets/tracks/<venue-slug>.jpg (e.g.
@@ -83,4 +83,16 @@ export function sessionKind(s: Pick<SessionSummary, "kind" | "totalLaps">): Sess
 
 export function kindInfo(kind: SessionKind) {
   return KINDS.find((k) => k.value === kind)!;
+}
+
+/** Short tags for a session's noted race settings, e.g. ["Online", "BoP", "Tyre ×3", "Fuel ×2"]. */
+export function conditionTags(c: SessionConditions | null | undefined): string[] {
+  if (!c) return [];
+  const out: string[] = [];
+  if (c.mode === "online") out.push("Online");
+  if (c.mode === "offline") out.push("Offline");
+  if (c.bop) out.push("BoP");
+  if (c.tyreWear != null) out.push(c.tyreWear === 0 ? "No tyre wear" : `Tyre ×${c.tyreWear}`);
+  if (c.fuelRate != null) out.push(c.fuelRate === 0 ? "No fuel use" : `Fuel ×${c.fuelRate}`);
+  return out;
 }
