@@ -17,6 +17,9 @@ const SAMPLE_EVERY: u32 = 2;
 const MAX_GAP_TICKS: u32 = 300;
 /// An older packet within this many ids of the newest is a late arrival.
 const STALE_IDS: i32 = 600;
+/// How much of the final lap must be driven before leaving the race counts as finishing it.
+const FINISH_FRACTION: f32 = 0.85;
+
 /// Slack added to the distance a car could plausibly cover between packets.
 const JUMP_SLACK_M: f32 = 40.0;
 /// Packets that must agree on the new position before a jump is believed.
@@ -118,6 +121,8 @@ pub enum EngineEvent {
     SessionStarted { car_code: i32, total_laps: i16 },
     SessionEnded,
     RaceStart,
+    /// The final lap was driven to the end, then the game left the race.
+    RaceFinished,
     LapCompleted(Box<CompletedLap>, LapContext),
     SectorCompleted(SectorSplit),
     /// The current lap just became invalid (also logged for diagnosis).
@@ -496,7 +501,12 @@ impl Engine {
         let prev_lap = prev.map(|x| x.lap);
         if p.lap <= 0 {
             // On the grid / pre-race. Leaving lap >= 1 for lap 0 means a restart.
-            if self.lap.is_some() {
+            if let Some(l) = &self.lap {
+                let final_lap = prev.is_some_and(|x| x.total_laps > 0 && l.lap_no == x.total_laps);
+                let nearly_round = l.sector_len.is_some_and(|len| l.dist as f32 >= len * FINISH_FRACTION);
+                if final_lap && nearly_round {
+                    ev.push(EngineEvent::RaceFinished);
+                }
                 self.end_session(ev);
             }
             self.anchor = None;

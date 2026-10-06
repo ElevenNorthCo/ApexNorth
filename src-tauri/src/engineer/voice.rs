@@ -35,12 +35,17 @@ pub struct Callout {
     pub priority: Priority,
     pub at: Instant,
     pub expected_position: Option<i16>,
+    /// Once playing, a protected call is never cut off by a higher priority
+    /// one (fuel and pit news at the line); the newer call waits its turn.
+    pub protected: bool,
+    /// Survives the session ending (the flag falls just before the game resets).
+    pub outlives_session: bool,
     generation: u64,
 }
 
 impl Callout {
     pub fn new(priority: Priority, text: impl Into<String>) -> Callout {
-        Callout { text: text.into(), priority, at: Instant::now(), expected_position: None, generation: 0 }
+        Callout { text: text.into(), priority, at: Instant::now(), expected_position: None, protected: false, outlives_session: false, generation: 0 }
     }
 }
 
@@ -62,10 +67,16 @@ struct Context {
 }
 
 impl Context {
-    fn current(&self, c: &Callout) -> bool {
-        c.generation == self.generation.load(Ordering::Acquire)
+    /// Still about this session and, for position calls, this position.
+    fn relevant(&self, c: &Callout) -> bool {
+        (c.outlives_session || c.generation == self.generation.load(Ordering::Acquire))
             && c.expected_position.map_or(true, |p| p == self.position.load(Ordering::Acquire))
-            && c.at.elapsed() < c.priority.max_age()
+    }
+
+    /// Relevant and not too old to be worth saying. Age only matters before
+    /// playback starts: a long call must never be cut off for being "stale".
+    fn current(&self, c: &Callout) -> bool {
+        self.relevant(c) && c.at.elapsed() < c.priority.max_age()
     }
 }
 
@@ -266,7 +277,7 @@ fn play(handle: &rodio::OutputStreamHandle, wav: &Path, call: &Callout, rx: &Rec
     while !sink.empty() {
         match rx.recv_timeout(Duration::from_millis(25)) {
             Ok(Msg::Say(c)) => {
-                let interrupt = c.priority > call.priority && context.current(&c);
+                let interrupt = !call.protected && c.priority > call.priority && context.current(&c);
                 enqueue(queue, c);
                 if interrupt {
                     sink.stop();
@@ -283,7 +294,7 @@ fn play(handle: &rodio::OutputStreamHandle, wav: &Path, call: &Callout, rx: &Rec
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
         }
-        if !settings.enabled || !context.current(call) {
+        if !settings.enabled || !context.relevant(call) {
             sink.stop();
             break;
         }

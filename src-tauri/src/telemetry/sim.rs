@@ -497,6 +497,9 @@ mod tests {
         println!("crew chief {} / normal {} / minimal {} calls", crew.len(), normal.len(), minimal.len());
         let has = |v: &[(i16, String)], s: &str| v.iter().any(|(_, t)| t.contains(s));
         assert!(has(&crew, "Lights out"));
+        // The flag: congratulate and point at the app; the replay that follows is not a new race.
+        assert!(has(&crew, "Checkered flag") || has(&crew, "checkered flag"), "finish call");
+        assert_eq!(crew.iter().filter(|(_, t)| t.contains("Lights out")).count(), 1, "replay start is not announced");
         assert!(has(&crew, "spin"), "spin detected");
         assert!(has(&crew, "Fuel usage is"));
         assert!(has(&crew, "Sector"));

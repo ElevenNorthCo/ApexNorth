@@ -131,16 +131,28 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
         ctx.setLineDash([]);
       }
 
-      // Input trace: braking is a red dashed line, throttle is green and
-      // solid, coasting is a thin dotted line. Pressure controls thickness.
-      // Group matching segments so playback doesn't issue a stroke per sample.
+      // Input trace on a dark casing so it reads on any background. Colour says
+      // what the driver is doing and brightens with pedal pressure: brake red,
+      // throttle green, trail braking (both pedals) amber, coasting blue-grey.
+      // Matching segments are grouped so playback doesn't stroke every sample.
+      const BRAKE = ["#8f2430", "#c42b39", "#ee3243", "#ff4757", "#ff6b7a"];
+      const THROTTLE = ["#1f7a45", "#25a85a", "#2ed36f", "#39ff7a", "#8dffb4"];
+      const TRAIL = "#ffb020";
+      const COAST = "#6f8fb3";
+      path(samples);
+      ctx.strokeStyle = "rgba(4,8,7,0.85)";
+      ctx.lineWidth = 7;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
       const style = (i: number) => {
         const s = samples[i];
-        const state = s.brk > 5 ? "brake" : s.thr > 5 ? "throttle" : "coast";
+        const state = s.brk > 5 && s.thr > 5 ? "trail" : s.brk > 5 ? "brake" : s.thr > 5 ? "throttle" : "coast";
         const pressure = state === "brake" ? s.brk : state === "throttle" ? s.thr : 0;
-        const band = Math.min(4, Math.floor(pressure / 25));
+        const band = Math.min(4, Math.floor(pressure / 20));
         const dim = !!range && (i < range[0] || i > range[1]);
-        return { state, band, dim, key: `${state}:${band}:${dim}` };
+        const color = state === "brake" ? BRAKE[band] : state === "throttle" ? THROTTLE[band] : state === "trail" ? TRAIL : COAST;
+        return { color, dim, key: `${color}:${dim}` };
       };
       let start = 0;
       let current = style(0);
@@ -148,16 +160,14 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
         const next = style(i);
         if (next.key === current.key && i < samples.length - 1) continue;
         path(samples, start, i);
-        ctx.strokeStyle = current.state === "brake" ? "#ff626b" : current.state === "throttle" ? "#39ff7a" : "#b5bfc1";
-        ctx.lineWidth = current.state === "coast" ? 1.5 : 2.5 + current.band * 0.5;
+        ctx.strokeStyle = current.color;
+        ctx.lineWidth = 4;
         ctx.globalAlpha = current.dim ? 0.2 : 1;
-        ctx.setLineDash(current.state === "brake" ? [5, 2] : current.state === "coast" ? [1, 5] : []);
         ctx.stroke();
         start = i;
         current = next;
       }
       ctx.globalAlpha = 1;
-      ctx.setLineDash([]);
 
       if (ghost) {
         const c = ghost;
@@ -226,9 +236,10 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
       <canvas ref={ref} className="h-full w-full" />
       <canvas ref={mini} className="absolute right-4 top-4 h-[96px] w-[96px]" />
       <div className="tech absolute left-4 top-4 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-[#0a100f]/90 px-3 py-2 text-[11px]" aria-label="Driving input legend">
-        <span className="flex items-center gap-2"><span className="w-5 border-t-[3px] border-dashed border-[#ff626b]" />Brake</span>
-        <span className="flex items-center gap-2"><span className="w-5 border-t-[3px] border-[#39ff7a]" />Throttle</span>
-        <span className="flex items-center gap-2"><span className="w-5 border-t border-dotted border-[#b5bfc1]" />Coast</span>
+        <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#ff4757]" />Brake</span>
+        <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#39ff7a]" />Throttle</span>
+        <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#ffb020]" />Trail brake</span>
+        <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#6f8fb3]" />Coast</span>
       </div>
       <div className="absolute bottom-5 right-4 flex flex-col gap-2">
         <button

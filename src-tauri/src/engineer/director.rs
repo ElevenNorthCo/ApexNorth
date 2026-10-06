@@ -64,6 +64,9 @@ pub struct Call {
     pub urgent: bool,
     pub text: String,
     pub expected_position: Option<i16>,
+    /// Don't cut this off mid-sentence for newer, higher priority news.
+    pub protected: bool,
+    pub outlives_session: bool,
 }
 
 impl Call {
@@ -78,6 +81,8 @@ impl Call {
             urgent: priority == Priority::High,
             text: text.into(),
             expected_position: None,
+            protected: false,
+            outlives_session: false,
         }
     }
 
@@ -94,7 +99,23 @@ impl Call {
     fn into_callout(self) -> Callout {
         let mut c = Callout::new(self.priority, self.text);
         c.expected_position = self.expected_position;
+        c.protected = self.protected;
+        c.outlives_session = self.outlives_session;
         c
+    }
+
+    /// The chequered-flag call: said at once, never cut off, and not
+    /// cleared when the game resets the session right after.
+    pub fn finale(mut self) -> Call {
+        self.urgent = true;
+        self.protected = true;
+        self.outlives_session = true;
+        self
+    }
+
+    pub fn protect(mut self) -> Call {
+        self.protected = true;
+        self
     }
 
     pub fn severity(mut self, s: u8) -> Call {

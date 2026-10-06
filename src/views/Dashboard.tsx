@@ -18,8 +18,11 @@ export function Dashboard({ onToggleNav, navOpen }: { onToggleNav: () => void; n
   const isLive = status.state === "live";
   const l = isLive ? live : null;
 
+  const fuelCritical = l != null && ((l.fuelPct != null && l.fuelPct < 15) || l.strategy?.window === "box_now");
+
   return (
-    <div className="an-bg h-full w-full">
+    <div className="an-bg relative h-full w-full">
+      {fuelCritical && <div className="hit-glow pointer-events-none absolute inset-0 z-40" aria-hidden />}
       <ScaleToFit width={W} height={H}>
         <HeaderSlash />
         <button
@@ -423,9 +426,9 @@ function pitBadge(l: LiveState | null): [string, string, boolean] | undefined {
   const s = l?.strategy;
   if (!l || !s) return undefined;
   const plan = l.pitPlan;
-  if (s.window === "box_now") return ["FUEL LIMIT · BOX THIS LAP", "#dc2626", true];
+  if (s.window === "box_now") return ["BOX THIS LAP", "#dc2626", true];
   if (plan && l.lap != null && plan.lap <= l.lap) {
-    return [plan.driver === "tyres" ? "TYRE STOP ADVISED" : `STOP ADVISED · FUEL LIMIT L${plan.fuelLatest}`, "#b9770e", false];
+    return [plan.driver === "tyres" ? "TYRE STOP ADVISED" : `FUEL STOP BY L${plan.fuelLatest}`, "#b9770e", false];
   }
   if (s.stopsRequired > 0 && s.earliestPitLap != null && s.latestPitLap != null) {
     const target = plan?.lap ?? s.targetPitLap;
@@ -480,7 +483,7 @@ function Fuel({ l }: { l: LiveState | null }) {
       </div>
       {pit && (
         <div
-          className={`num absolute -top-[9px] right-[18px] rounded-[4px] px-[7px] py-[1px] text-[11px] font-bold ${pit[2] ? "blink" : ""}`}
+          className={`num absolute -top-[9px] right-[18px] z-20 whitespace-nowrap rounded-[4px] px-[7px] py-[1px] text-[11px] font-bold ${pit[2] ? "blink" : ""}`}
           style={{ background: pit[1] }}
         >
           {pit[0]}

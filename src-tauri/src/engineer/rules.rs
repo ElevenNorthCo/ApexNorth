@@ -38,6 +38,9 @@ struct LapPace {
     good_said: bool,
 }
 
+/// How long after the flag a restart from the grid is the replay, not a race.
+const REPLAY_WINDOW: Duration = Duration::from_secs(180);
+
 #[derive(Default)]
 pub struct Engineer {
     director: Director,
@@ -48,6 +51,8 @@ pub struct Engineer {
     laps_done: i32,
     current_lap: i16,
     race_start_at: Option<Instant>,
+    /// When the chequered flag fell; the replay that follows isn't a new race.
+    finished_at: Option<Instant>,
     incident_at: Option<Instant>,
     pace: LapPace,
     recent_laps: VecDeque<u32>,
@@ -89,8 +94,16 @@ impl Engineer {
         self.sync_driver(cfg);
         let mut calls = vec![];
         match ev {
-            EngineEvent::SessionStarted { .. } => *self = Engineer { driver: self.driver.take(), ..Engineer::default() },
+            EngineEvent::SessionStarted { .. } => {
+                *self = Engineer { driver: self.driver.take(), finished_at: self.finished_at, ..Engineer::default() }
+            }
             EngineEvent::RaceStart => {
+                // After the flag the game rolls the replay from lap 1 on the grid.
+                let replay = self.finished_at.is_some_and(|t| now.saturating_duration_since(t) < REPLAY_WINDOW);
+                self.finished_at = None;
+                if replay {
+                    return self.director.submit(vec![], cfg, now);
+                }
                 self.race_start_at = Some(now);
                 calls.push(Call::new(Topic::RaceStart, Minimal, Priority::High, "race.start", "Lights out. Go, go, go!"));
             }
@@ -104,6 +117,7 @@ impl Engineer {
                 self.pos_changed_at = Some(now);
                 self.laps_since_pos_change = 0;
             }
+            EngineEvent::RaceFinished => calls.extend(self.finish_call(now)),
             EngineEvent::SectorCompleted(s) => calls.extend(self.sector_calls(s, level)),
             EngineEvent::Incident(i) => {
                 self.incident_at = Some(now);
@@ -124,13 +138,19 @@ impl Engineer {
                 self.current_lap = ctx.next_lap;
                 self.strategy = ctx.strategy.clone();
                 self.plan = ctx.plan.clone();
-                calls.extend(self.lap_calls(lap, ctx));
-                calls.extend(self.pace_calls(lap, ctx, level));
-                calls.extend(self.fuel_calls(ctx, level));
-                calls.extend(self.pit_calls(lap, ctx));
-                calls.extend(self.tyre_deg_calls(lap, ctx));
-                calls.extend(self.position_hold_call(lap, ctx));
+                calls.extend(self.lap_calls(lap, ctx, now));
+                // Nothing left to plan once the flag has fallen.
+                if ctx.laps_remaining != Some(0) {
+                    calls.extend(self.pace_calls(lap, ctx, level));
+                    calls.extend(self.fuel_calls(ctx, level));
+                    calls.extend(self.pit_calls(lap, ctx));
+                    calls.extend(self.tyre_deg_calls(lap, ctx));
+                    calls.extend(self.position_hold_call(lap, ctx));
+                }
                 self.pace = LapPace::default();
+                // News at the line (fuel, pit, final lap) mustn't be cut off
+                // by a lock-up or wheelspin call in the first corner.
+                calls = calls.into_iter().map(Call::protect).collect();
             }
             _ => {}
         }
@@ -283,7 +303,29 @@ impl Engineer {
         out
     }
 
-    fn lap_calls(&mut self, lap: &CompletedLap, ctx: &LapContext) -> Vec<Call> {
+    /// Congratulate once per race, however the flag was detected.
+    fn finish_call(&mut self, now: Instant) -> Option<Call> {
+        if self.finished_at.is_some_and(|t| now.saturating_duration_since(t) < REPLAY_WINDOW) {
+            return None;
+        }
+        self.finished_at = Some(now);
+        let name = self.name();
+        let result = match self.pos_now.or(self.pos_said) {
+            Some(1) => " You won it!".to_string(),
+            Some(p) => format!(" You finished P{p}."),
+            None => String::new(),
+        };
+        let text = self.phrases.pick(
+            "race.finish",
+            &[
+                &format!("Checkered flag{name}!{result} Great drive. Head to the app and check the telemetry, and let's see where we can find more time."),
+                &format!("That's the checkered flag{name}!{result} Nice work. Let's go through the telemetry in the app and see how we can improve."),
+            ],
+        );
+        Some(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "race.finish", text).finale())
+    }
+
+    fn lap_calls(&mut self, lap: &CompletedLap, ctx: &LapContext, now: Instant) -> Vec<Call> {
         let t = speak_time(lap.time_ms);
         let text = match lap.invalid_reason {
             Some(InvalidReason::PitLap) => Some(format!("Pit lap, {t}.")),
@@ -307,6 +349,9 @@ impl Engineer {
         let mut out = vec![];
         if let Some(text) = text {
             out.push(Call::new(Topic::LapTimes, Minimal, Priority::Normal, "lap.time", text));
+        }
+        if ctx.laps_remaining == Some(0) {
+            out.extend(self.finish_call(now));
         }
         if ctx.laps_remaining == Some(1) {
             let name = self.name();
