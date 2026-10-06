@@ -83,6 +83,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 ### Session recording & history
 - Every lap is recorded automatically at 30 Hz and saved locally in SQLite.
 - The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car make and model, laps, best and average lap, and the delta to your previous best there.
+- **Race conditions:** note how each session was run (single player or online, BoP on or off, tyre wear and fuel multipliers) from the Session page. They show as chips on the Activity card. GT7 doesn't send these, so you set them by hand; fuel use itself is always measured.
 - **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
 - Every one of the 41 GT7 venues has a preview photo (`src/assets/tracks/`, one per venue, shared by all its layouts). It shows on the Activity card and in the Session header. A session whose track wasn't recognised gets generated art from its outline.
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
@@ -94,7 +95,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 ### Lap analysis & playback
 - A track map showing the track surface, your racing line, sector markers and the car position, with zoom that follows the car and an overview mini-map.
 - **Playback** animates the lap in real time at 1×, 2× or 4×.
-- **Compare** against any lap on the same track, from any session:
+- **Compare** against any lap on the same track, from any session. The laps are matched by position on track, so the ghost car runs at the other lap's real pace:
   - sector-by-sector deltas
   - a ghost line and ghost car on the map
   - overlaid traces
@@ -103,6 +104,8 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ### Race engineer voice
 Callouts are spoken offline with Piper. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
+
+Set your name in **Settings** and the engineer uses it ("Good luck out there, Michael.").
 
 **Engineer chatter** sets how often it talks: *Minimal* (critical information only), *Normal*, *Chatty* or *Crew Chief*. **Callout categories** set what it talks about, and a category that's off stays off at every chatter level.
 
@@ -208,6 +211,7 @@ PS5/PS4 ──UDP 33740──▶ telemetry/udp.rs   heartbeat + discovery + rece
 
 - All the heavy work happens in Rust: decrypting, lap logic, recording and callouts. The UI only renders.
 - **Lap timing:** GT7 sends no running lap time, so the current lap time comes from packet IDs (60 per second, so dropped packets are handled). The completed lap uses the game's official time, and the recorded samples are rescaled to match it.
+- **Laps join at the line:** when the packets around the start/finish line have a gap, the lap is split there using the official lap time. Each lap starts at t = 0, d = 0 on the line, so laps line up cleanly for comparison.
 - **Delta:** the elapsed time is compared with the reference lap's time at the same distance. The reference is your best lap in this session, or your stored best for this track and car.
 - **Lap validity:** a lap is only thrown out on strong evidence. A single bad packet, a Wi-Fi dropout or a late packet is ignored. A position jump only counts once several packets agree the car really moved, and it's impossible over the real elapsed time. The reason is saved with the lap (hover *INVALID* in the session table).
 - **Sectors:** five equal-distance sectors of the reference lap. Each one fires a live event with the sector time, the delta to the best sector and to the reference, and the running lap delta. A standing-start lap is never used as a sector benchmark.
@@ -338,7 +342,6 @@ The tests cover:
 - [x] Country flags; preview photos for all 41 venues on Activity cards and the Session header
 - [x] Session types (Practice / Qualifying / Race / Time Trial) with filters and pace comparison per type
 - [x] Race position callouts: gains, losses, lead, podium, start summary, chase encouragement
-- [x] Track photos for all 41 venues
 
 ### ✅ Phase 3.7: Fixes & race conditions
 - [x] Laps close at the start/finish line: a packet gap at the line is split using the official lap time, instead of leaving a hole and shifting the next lap's timing
@@ -382,7 +385,7 @@ The tests cover:
   - Nordschleife Tourist, Nürburgring Endurance II and Fuji (Short) drive the same line as their sister layouts, so they are named as those. Rename the track to fix that; the name sticks.
   - Anything unrecognised is named "Track N (x.xx km)" until you rename it.
 - **Cars** that are newer than the bundled list show as `Car #<code>`. Run `scripts/build_gt7_data.py` to refresh it.
-- **Position:** race position comes from the packet's `pre_race_position` field, which updates live during races on PS5. GT7 sends no data on other cars, so there are no gaps to the car ahead or behind. A change must hold for half a second before it counts, and about three seconds before it's announced.
+- **Position:** race position comes from the packet's `pre_race_position` field, which updates live during races on PS5. GT7 sends no data on other cars, so there are no gaps to the car ahead or behind. A change must hold for about half a second (30 packets) before it counts, and about three seconds before it's announced (six in the opening 25 seconds).
 - **Performance points (PP):** GT7 doesn't send PP or tuning data, so it can't be shown per session.
 - **Tyre wear:** GT7 sends no tyre wear data. Degradation is estimated from the lap-time trend and stated with honest language, never as a percentage.
 - **Pit entry:** track layouts differ and GT7 doesn't say where the pit lane is, so the "box this lap" reminder comes at about 75–90% of the lap.
