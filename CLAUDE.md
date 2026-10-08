@@ -96,7 +96,12 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Fonts: `.tech` (Chakra Petch, uppercase labels/tabs), `.brand` (Saira italic 900, wordmark and page titles), `.an-bg` page backdrop.
   - `components/Tile.tsx` is the neon panel (`notch` puts the label in the top border).
   - Numbers use the `.num` class (JetBrains Mono, slashed zero).
-- **Artwork:** all 41 venues have a 1280×720 photo in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob. `TrackArt` (`components/Art.tsx`) shows it on Activity cards (`fade="right"`) and the Session header (`fade="left"`); unrecognised tracks get generated art. Don't add a Settings section for artwork (the user asked for none). No car images: the user didn't like the generated silhouette, so cards show make and model text. Flags are SVGs in `components/Flag.tsx`.
+- **Artwork:** all 41 venues have a 1280×720 photo in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob. `TrackArt` (`components/Art.tsx`) shows it on Activity cards (`fade="right"`) and the Session header (`fade="left"`); unrecognised tracks get generated art. Don't add a Settings section for artwork (the user asked for none). Flags are SVGs in `components/Flag.tsx`.
+- **Car images (planned, not wired in yet):**
+  - The user is generating real car images in a separate repo, `~/Projects/ElevenNorth/apexnorthCarAssets`, one manufacturer per branch with Codex. They merge the branches themselves. Done so far: Ferrari, Ford, Chevrolet, Honda, Nissan. Toyota is in progress. About 574 cars in total.
+  - Format: transparent WebP, 600×350, under 100 KiB, left-facing front three-quarter view, at `assets/cars/<manufacturer>/<slug>.webp`. Slugs are not GT7 `car_code`s; each pack in `dist/` ships a GT7-ID-to-asset manifest.
+  - Intended use: Activity cards show the track photo plus the car the user drove, next to the make/model text (the text stays). Lookup would be `car_code` → `catalog/cars.rs` name → slug/manifest.
+  - The user didn't like the SVG silhouettes or scraped images. Don't generate or fetch car art. They'll ask for help copying the images over when they're ready.
 - **Race conditions:** `sessions.conditions` (JSON `SessionConditions`: mode offline/online, bop, tyreWear, fuelRate), set with `set_session_conditions` from the Session view; Activity shows them as chips. GT7 sends none of these.
 - **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
 - **Charts:**
