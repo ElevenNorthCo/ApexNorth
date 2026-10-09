@@ -59,6 +59,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - The current lap time comes from `packet_id` ticks (60 Hz).
   - A finished lap uses the game's `last_lap_ms`. Sample `t` values are rescaled to match it.
   - A lap is invalid only with an `InvalidReason` (joined mid-lap, rewind/reset, confirmed telemetry jump, too short, pit lap). A position jump has to be impossible over the real elapsed time (packet-id gap) *and* confirmed by 3 packets. Stale or reordered packets are dropped. Don't loosen this back to single-packet checks; it made real laps "not count".
+  - A grid-start lap (`standing_start`) stays the live reference but is held out of the session best until the next valid lap: under `GRID_LAP_MIN_FRACTION` (97 %) of that lap's length it's revoked (`EngineEvent::LapRevoked` → `Db::revoke_lap`, `insufficient_distance`). GT7's own `best_lap_ms` is ignored when it matches the revoked time. `Db::revoke_short_grid_laps` repairs old data on launch. Fuji's grid is ~300 m past the line.
 - **Track identity** (GT7 sends no track ID):
   - First, the lap's (x, z) line is matched against `catalog/tracks.rs`. It needs two-way coverage, the same direction, and the least divergence, which tells chicane variants apart.
   - Matched tracks store `tracks.layout_id`. Otherwise it falls back to a fingerprint of start/finish position plus lap length, with a placeholder name. See `Db::identify_track`.
@@ -100,7 +101,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - **Car images:**
   - 574 transparent 600×350 WebP renders live in `src/assets/cars/<slug>.webp` (about 19 MB, bundled). They are made in the separate repo `~/Projects/ElevenNorth/apexnorthCarAssets` (done, 574 of 574).
   - `src/lib/carImages.json` maps GT7 `car_code` → file name (built from that repo's `gt7-cars.csv`, `GT7 ID` column `carNNNN`). `carImage(code)` in `lib/media.ts` resolves it through a Vite glob. A code with no image (about 10 newer cars in `data/gt7_cars.csv`) just shows no image.
-  - Shown as a thumbnail above the make/model text in the Activity card's Car column; the text stays. Not yet used on the Session header. The image is centred and 112 px tall; the Activity card columns are tuned so a two-word track name fits (title 21 px).
+  - Shown as a thumbnail above the make/model text in the Activity card's Car column; the text stays. Not yet used on the Session header. The image is centred, up to 112 px tall, and shrinks (`flex-1 min-h-0`) so long car names and condition chips never overflow the 208 px card. The track outline sits in the title column next to the date (no column of its own), so "Fuji International Speedway" fits on one line at 21 px. The kind chip isn't repeated in the Car column (it's already in the date line).
   - To add or refresh images: copy the new `.webp` files into `src/assets/cars/` and add their `car_code` → file entries to `carImages.json`. Don't generate or fetch car art.
 - **Race conditions:** `sessions.conditions` (JSON `SessionConditions`: mode offline/online, bop, tyreWear, fuelRate), set with `set_session_conditions` from the Session view; Activity shows them as chips. GT7 sends none of these.
 - **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
@@ -114,7 +115,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - Don't use `window.alert` or `window.confirm`. Use inline confirms instead (see delete session in `views/Session.tsx`).
 
 ## README screenshots
-- `docs/screenshots/*.jpg` (dashboard, activity, session, lap-analysis) were taken from the Vite frontend in headless Chrome, with a mocked Tauri backend serving real sessions dumped from the user's DB, and a real Brands Hatch lap replayed as live telemetry. Retake them when the UI changes noticeably.
+- `docs/screenshots/*.jpg` (dashboard, activity, session, lap-analysis) were taken from the Vite frontend in headless Chrome, with a mocked Tauri backend serving real sessions dumped from the user's DB, and a real Fuji SF19 race (session 22) as the showcase: lap 15 against lap 14 as a staged live frame. Drive it over CDP: inject a fake `__TAURI_INTERNALS__` (invoke + transformCallback, emit events by calling the stored listener callbacks) and switch views with `import('/src/lib/store.ts')`. Snapshot the DB with `sqlite3 "file:...apexnorth.db?mode=ro" ".backup copy.db"` (a plain copy misses the WAL), dump it through `storage::Db` with a temporary ignored test, and serve it to the mock. Last retaken 2026-10-09 at 1600×900, 1.5× scale. Retake them when the UI changes noticeably.
 
 ## GT7 facts that shape the design
 - GT7 doesn't send:

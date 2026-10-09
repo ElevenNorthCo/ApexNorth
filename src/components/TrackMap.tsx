@@ -235,7 +235,7 @@ export function TrackMap({ samples, compare, ghost, cursor, range, zoom, onZoom,
     >
       <canvas ref={ref} className="h-full w-full" />
       <canvas ref={mini} className="absolute right-4 top-4 h-[96px] w-[96px]" />
-      <div className="tech absolute left-4 top-4 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-[#0a100f]/90 px-3 py-2 text-[11px]" aria-label="Driving input legend">
+      <div className="tech absolute left-[76px] top-[18px] flex flex-wrap gap-3 rounded-lg border border-white/10 bg-[#0a100f]/90 px-3 py-2 text-[11px]" aria-label="Driving input legend">
         <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#ff4757]" />Brake</span>
         <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#39ff7a]" />Throttle</span>
         <span className="flex items-center gap-2"><span className="h-[4px] w-5 rounded-full bg-[#ffb020]" />Trail brake</span>

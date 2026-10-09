@@ -125,31 +125,31 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
           </div>
           {subtitle && <div className="tech mt-1.5 truncate pl-[1px] text-[15px] text-white/60">{subtitle}</div>}
         </div>
-        <div>
-          <div className="text-[16px] text-white/90">{shortDate(s.startedAt)}</div>
-          <div className="text-[15px] text-white/55">
-            <span style={{ color: c }}>{kind.label}</span> · GT7 · {timeOfDay(s.startedAt)}
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[16px] text-white/90">{shortDate(s.startedAt)}</div>
+            <div className="truncate text-[15px] text-white/55">
+              <span style={{ color: c }}>{kind.label}</span> · GT7 · {timeOfDay(s.startedAt)}
+            </div>
+          </div>
+          <div className="mr-3 shrink-0 max-xl:hidden">
+            <TrackOutline points={s.outline} size={78} strokeWidth={4} stroke="white" />
           </div>
         </div>
       </div>
 
-      <div className="flex w-[100px] shrink-0 items-center justify-center max-xl:hidden">
-        <TrackOutline points={s.outline} size={84} strokeWidth={4} stroke="white" />
-      </div>
-
       <div className="my-4 flex w-[290px] shrink-0 flex-col items-center justify-center gap-1 text-center border-l border-white/10 px-6 max-lg:hidden">
         {img ? (
-          <img src={img} alt={fullCar} className="h-[112px] w-full object-contain object-center" draggable={false} />
+          <img src={img} alt={fullCar} className="min-h-0 w-full max-h-[112px] flex-1 object-contain object-center" draggable={false} />
         ) : (
           <div className="tech text-[12px] text-white/55">Car</div>
         )}
-        <div className="leading-tight">
+        <div className="w-full shrink-0 leading-tight" title={fullCar}>
           <div className="tech truncate text-[12px] text-white/70">{maker}</div>
           <div className="tech line-clamp-2 text-[14px] font-semibold leading-snug">{model || maker}</div>
         </div>
-        <div className="flex flex-wrap justify-center gap-1.5">
+        <div className="flex shrink-0 flex-wrap justify-center gap-1.5">
           {cls && <Chip color="#b44cff">{cls}</Chip>}
-          <Chip color={c}>{kind.label}</Chip>
           {conditionTags(s.conditions).map((t) => (
             <Chip key={t} color="#ffc81a">
               {t}

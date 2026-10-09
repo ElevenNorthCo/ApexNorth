@@ -1,59 +1,118 @@
 <p align="center">
-  <img src="docs/icon.png" alt="ApexNorth" width="220" />
+  <img src="docs/icon.png" alt="ApexNorth" width="160" />
 </p>
 
 <h1 align="center">ApexNorth</h1>
 
-<p align="center"><b>Live GT7 telemetry dashboard &amp; AI race engineer</b><br/>macOS · Windows · Linux</p>
+<p align="center">
+  <b>A live telemetry dashboard and AI race engineer for Gran Turismo 7.</b><br/>
+  No extra hardware. No account. Your data stays on your machine.
+</p>
 
----
+<p align="center">
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-39ff7a?style=flat-square&labelColor=0b0f0d" />
+  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white&labelColor=0b0f0d" />
+  <img alt="Rust" src="https://img.shields.io/badge/backend-Rust-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0b0f0d" />
+  <img alt="React" src="https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61dafb?style=flat-square&logo=react&logoColor=white&labelColor=0b0f0d" />
+  <img alt="Status" src="https://img.shields.io/badge/status-early%20development-ffc81a?style=flat-square&labelColor=0b0f0d" />
+</p>
 
-**A live telemetry dashboard and AI race engineer for Gran Turismo 7.** It runs on macOS, Windows and Linux.
+<p align="center">
+  <a href="#quick-start">Quick start</a> &middot;
+  <a href="#features">Features</a> &middot;
+  <a href="#connecting-to-your-playstation">Connect</a> &middot;
+  <a href="#race-engineer-voice-piper">Voice</a> &middot;
+  <a href="#roadmap-phases--milestones">Roadmap</a> &middot;
+  <a href="#development">Development</a>
+</p>
 
-ApexNorth connects to your PlayStation over Wi-Fi with no extra hardware. It shows a clean real-time dashboard, records every lap automatically, and lets you replay and compare laps on a track map. A race engineer voice calls out lap times, fuel, the pit window and tyre status as you drive.
+<p align="center">
+  <img src="docs/screenshots/dashboard.jpg" alt="ApexNorth live dashboard: position, lap, shift lights, gear and RPM, tyre temperatures, lap times with live delta, fuel and the race engineer" width="100%" />
+</p>
 
-The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster.
+## Overview
 
-> Built with Tauri 2 (Rust) and React + TypeScript. Voice is generated locally and offline with [Piper](https://github.com/rhasspy/piper).
+ApexNorth connects to your PlayStation over Wi-Fi and turns Gran Turismo 7's telemetry stream into a live dashboard, an automatic lap recorder and a race engineer that talks to you while you drive.
 
----
+| | |
+|---|---|
+| **Drive** | A real-time dashboard with shift lights, live delta to your best lap, tyre temperatures, fuel and pit strategy. |
+| **Record** | Every lap is saved at 30 Hz with five sector splits. Tracks and cars are named automatically. |
+| **Analyse** | Replay any lap on a track map and compare it against any other lap, with synced speed, throttle, brake and gear traces. |
+| **Listen** | An offline voice engineer ([Piper](https://github.com/rhasspy/piper)) calls lap times, sectors, fuel, the pit window, tyres and race position. |
+
+The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster. See the [roadmap](#roadmap-phases--milestones).
 
 ## Screenshots
 
-<p align="center">
-  <img src="docs/screenshots/dashboard.jpg" alt="Live dashboard: position, lap, shift lights, gear and RPM, tyre temperatures, lap times with live delta, fuel and the race engineer" width="100%" />
-  <br/><sub><b>Live dashboard</b>: position, shift lights, gear and RPM, tyre temperatures, live delta, fuel strategy and the race engineer's last call</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/activity.jpg" alt="Activity feed with track photos, flags, track outlines, car and lap stats" width="100%" />
-  <br/><sub><b>Activity</b>: every session with its venue photo, flag, layout, car and lap stats, filtered by practice, qualifying, race or time trial</sub>
-</p>
-
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/session.jpg" alt="Session page with session type, pace by type and lap table" /><br/><sub><b>Session</b>: tag the session type, compare your pace here by type, five sector splits per lap</sub></td>
-    <td width="50%"><img src="docs/screenshots/lap-analysis.jpg" alt="Lap analysis with track map and speed, throttle, brake and gear traces" /><br/><sub><b>Lap analysis</b>: racing line on the track map, playback, and synced speed, throttle, brake and gear traces</sub></td>
+    <td width="50%"><img src="docs/screenshots/activity.jpg" alt="Activity feed with track photos, flags, track outlines, car renders and lap stats" /><br/><sub><b>Activity</b>: every session with its venue photo, flag, layout, car and lap stats, filtered by practice, qualifying, race or time trial</sub></td>
+    <td width="50%"><img src="docs/screenshots/session.jpg" alt="Session page with session type, race conditions, pace by type and lap table" /><br/><sub><b>Session</b>: tag the session type, note the race conditions, compare your pace by type, five sector splits per lap</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/lap-analysis.jpg" alt="Lap analysis with track map, ghost lap comparison and delta, speed, throttle, brake and gear traces" /><br/><sub><b>Lap analysis</b>: racing line on the track map, playback, sector deltas against any other lap, and synced delta, speed, throttle, brake and gear traces</sub></td>
   </tr>
 </table>
 
-<sub>Real laps recorded from GT7 on a PS5 (Brands Hatch, Toyota GR Corolla MORIZO Edition).</sub>
+<sub>Screenshots show a real 15-lap race recorded from GT7 on a PS5: Fuji International Speedway in the Super Formula SF19.</sub>
 
 ---
 
-## Contents
-- [Screenshots](#screenshots)
-- [Features](#features)
-- [Quick start](#quick-start)
-- [Connecting to your PlayStation](#connecting-to-your-playstation)
-- [Race engineer voice (Piper)](#race-engineer-voice-piper)
-- [How it works](#how-it-works)
-- [GT7 telemetry protocol](#gt7-telemetry-protocol)
-- [Project structure](#project-structure)
-- [Development](#development)
-- [Roadmap: phases & milestones](#roadmap-phases--milestones)
-- [Known limitations](#known-limitations)
-- [Credits](#credits)
+## Quick start
+
+### Prerequisites
+- [Rust](https://rustup.rs) (stable)
+- [Node.js](https://nodejs.org) 20+
+- Tauri system dependencies for your OS. See the [Tauri prerequisites](https://tauri.app/start/prerequisites/).
+- Optional, for voice: [Piper TTS](https://github.com/rhasspy/piper) and a voice model (`.onnx` plus `.onnx.json`).
+
+### Run
+```bash
+git clone https://github.com/ElevenNorthCo/ApexNorth.git
+cd ApexNorth
+npm install
+npm run tauri dev
+```
+
+No PlayStation handy? On the Connect screen choose **Try demo mode**. A built-in simulator drives a 10-lap race (grid start, fuel burn, tyre wear, a pit stop and a spin) so you can see the dashboard, recording, lap analysis and voice engineer working end to end.
+
+### Build an installer
+```bash
+npm run tauri build
+```
+The output goes to `src-tauri/target/release/bundle/`: `.app`/`.dmg` on macOS, `.msi`/`.exe` on Windows, and `.deb`/`.AppImage`/`.rpm` on Linux.
+
+---
+
+## Connecting to your PlayStation
+
+1. Put your computer and your PS5/PS4 on the **same network**.
+2. In GT7, get **on track**: a race, time trial, lobby or practice. The game doesn't send telemetry from menus.
+3. In ApexNorth, open **Connect**, then choose **Find my PlayStation**.
+
+If it can't find the console:
+- Enter the IP manually. On the PS5 it's under *Settings → Network → View Connection Status*.
+- Turn off **AP / client isolation** on your router, and avoid guest networks.
+- **Windows:** allow ApexNorth through the firewall (UDP port **33740** inbound).
+- **macOS:** allow *Local Network* access when prompted.
+- Use 5 GHz Wi-Fi or Ethernet for the smoothest 60 Hz stream.
+
+---
+
+## Race engineer voice (Piper)
+
+ApexNorth calls the `piper` command-line program. It finds Piper on your `PATH` and in `~/.local/bin`.
+
+```bash
+pipx install piper-tts   # or download a release binary
+```
+
+1. Download a voice from [Piper voices](https://huggingface.co/rhasspy/piper-voices). You need both the `.onnx` file and its `.onnx.json` file. `en_US-ryan-high` makes a good race engineer.
+2. In **Settings → Race engineer voice**, choose the voice with **Browse…**, or drop it into the app's `voices` folder.
+3. Press **Test voice**.
+
+Generated audio is cached, so repeated callouts play instantly. If the voice can't play, the dashboard shows a red **Voice off** line explaining why.
 
 ---
 
@@ -64,12 +123,11 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 - Live race position (P3 / 16), lap of total, and laps left.
 - A large gear indicator with RPM arcs, suggested shift, and speed in km/h or mph.
 - A 12-LED shift light bar driven by the car's own rev alert range. It flashes at the limiter.
-- Status chips for TCS, ASM, pit window, box, ahead of best, hot tyres, wheelspin and lock-ups.
 - Current, last and best lap times, with a **live delta** to your best lap measured by distance.
 - Tyre temperatures for all four corners around a top-down car, with temperature bars and cold / optimal / hot states.
 - Brake and throttle readouts with fill bars.
 - Fuel: a fill bar, % used per lap, laps of fuel left, finish margin, and pit window status.
-- Side indicator LEDs: TCS, ASM, pit window open, box now, ahead of best, tyres hot, wheelspin and lock-up.
+- Status lights for TCS, ASM, pit window open, box now, ahead of best, hot tyres, wheelspin and lock-ups.
 - A connection status readout (`SEARCHING`, `LIVE 60HZ`, `SIGNAL LOST`) and a clock.
 - The screen stays awake while data is live.
 
@@ -82,14 +140,14 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ### Session recording & history
 - Every lap is recorded automatically at 30 Hz and saved locally in SQLite.
-- The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car make and model, laps, best and average lap, and the delta to your previous best there.
+- The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car render with make and model, laps, best and average lap, and the delta to your previous best there.
 - **Race conditions:** note how each session was run (single player or online, BoP on or off, tyre wear and fuel multipliers) from the Session page. They show as chips on the Activity card. GT7 doesn't send these, so you set them by hand; fuel use itself is always measured.
 - **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
 - Each Activity card shows a transparent render of the car you drove, centred above its make and model (574 cars, `src/assets/cars/`). A car newer than the bundled set just shows its name.
 - Every one of the 41 GT7 venues has a preview photo (`src/assets/tracks/`, one per venue, shared by all its layouts). It shows on the Activity card and in the Session header. A session whose track wasn't recognised gets generated art from its outline.
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
 - **Pit detection:** a refuel or a stop flags the lap as a pit lap and keeps it out of best-lap records.
-- Invalid laps (a rewind or reset, or a lap you joined mid-way) are flagged and excluded.
+- Invalid laps (a rewind or reset, a lap you joined mid-way, or a race's opening lap from a grid that sits past the start line) are flagged and excluded.
 - **Real track and car names.** GT7 doesn't send a track ID, so ApexNorth recognises the track from the line you drove. It checks the lap against a built-in catalog of all 121 GT7 layouts, including reverse layouts and chicane / no-chicane variants. Cars are named from the full GT7 car list (584 cars), e.g. "Porsche 911 GT3 RS (992) '22".
 - A track the catalog can't place gets a placeholder name. Rename it from the session page, where the box suggests every GT7 track.
 
@@ -137,61 +195,6 @@ How it stays useful rather than noisy:
 
 ---
 
-## Quick start
-
-### Prerequisites
-- [Rust](https://rustup.rs) (stable)
-- [Node.js](https://nodejs.org) 20+
-- Tauri system dependencies for your OS. See the [Tauri prerequisites](https://tauri.app/start/prerequisites/).
-- Optional, for voice: [Piper TTS](https://github.com/rhasspy/piper) and a voice model (`.onnx` plus `.onnx.json`).
-
-### Run
-```bash
-git clone https://github.com/ElevenNorthCo/ApexNorth.git
-cd ApexNorth
-npm install
-npm run tauri dev
-```
-
-### Build an installer
-```bash
-npm run tauri build
-```
-The output goes to `src-tauri/target/release/bundle/`: `.app`/`.dmg` on macOS, `.msi`/`.exe` on Windows, and `.deb`/`.AppImage`/`.rpm` on Linux.
-
----
-
-## Connecting to your PlayStation
-
-1. Put your computer and your PS5/PS4 on the **same network**.
-2. In GT7, get **on track**: a race, time trial, lobby or practice. The game doesn't send telemetry from menus.
-3. In ApexNorth, open **Connect**, then choose **Find my PlayStation**.
-
-If it can't find the console:
-- Enter the IP manually. On the PS5 it's under *Settings → Network → View Connection Status*.
-- Turn off **AP / client isolation** on your router, and avoid guest networks.
-- **Windows:** allow ApexNorth through the firewall (UDP port **33740** inbound).
-- **macOS:** allow *Local Network* access when prompted.
-- Use 5 GHz Wi-Fi or Ethernet for the smoothest 60 Hz stream.
-
----
-
-## Race engineer voice (Piper)
-
-ApexNorth calls the `piper` command-line program. It finds Piper on your `PATH` and in `~/.local/bin`.
-
-```bash
-pipx install piper-tts   # or download a release binary
-```
-
-1. Download a voice from [Piper voices](https://huggingface.co/rhasspy/piper-voices). You need both the `.onnx` file and its `.onnx.json` file. `en_US-ryan-high` makes a good race engineer.
-2. In **Settings → Race engineer voice**, choose the voice with **Browse…**, or drop it into the app's `voices` folder.
-3. Press **Test voice**.
-
-Generated audio is cached, so repeated callouts play instantly. If the voice can't play, the dashboard shows a red **Voice off** line explaining why.
-
----
-
 ## How it works
 
 ```
@@ -223,6 +226,9 @@ PS5/PS4 ──UDP 33740──▶ telemetry/udp.rs   heartbeat + discovery + rece
 
 ## GT7 telemetry protocol
 
+<details>
+<summary>Packet format, cipher and handshake</summary>
+
 Sources: Nenkai's PDTools, gt7telemetry, and the GTPlanet community.
 
 | | |
@@ -236,9 +242,14 @@ Sources: Nenkai's PDTools, gt7telemetry, and the GTPlanet community.
 
 The field offsets are documented in [`src-tauri/src/telemetry/packet.rs`](src-tauri/src/telemetry/packet.rs).
 
+</details>
+
 ---
 
 ## Project structure
+
+<details>
+<summary>Source layout</summary>
 
 ```
 src-tauri/src/
@@ -273,6 +284,8 @@ src/
   lib/                   api (typed commands), store (Zustand), format helpers
 ```
 
+</details>
+
 ---
 
 ## Development
@@ -300,6 +313,9 @@ The tests cover:
 ---
 
 ## Roadmap: phases & milestones
+
+<details>
+<summary><b>Shipped: phases 1 to 3.8</b> (connect, record, voice engineer, strategy, new UI, car images)</summary>
 
 ### ✅ Phase 1: Connect & live data
 - [x] Tauri 2 + React + TypeScript scaffold
@@ -357,8 +373,12 @@ The tests cover:
 
 ### ✅ Phase 3.8: Car images
 - [x] 574 transparent car renders on Activity cards, centred and sized up, mapped from the GT7 car code (`src/lib/carImages.json`)
-- [x] Activity card layout rebalanced so long track names ("Suzuka Circuit", "High Speed Ring") are no longer cut off
+- [x] Activity card layout rebalanced: the track outline sits beside the date so long names ("Fuji International Speedway") fit on one line, and the car image shrinks to make room for long car names and condition chips
+- [x] Lap analysis legend no longer hidden behind the back button
+- [x] A race's opening lap no longer counts when the grid sits past the line (Fuji): it's checked against the next full lap, and laps saved before the fix are repaired on launch
 - [ ] Car image in the Session header
+
+</details>
 
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
@@ -406,6 +426,6 @@ The tests cover:
 - Car list: [ddm999/gt7info](https://github.com/ddm999/gt7info) (MIT-0).
 - Track catalog and reference lines: [jbhoorasingh/gt7-datalogger-track-data](https://github.com/jbhoorasingh/gt7-datalogger-track-data) (CC0), built on captures from [zetetos/gt-telemetry](https://github.com/zetetos/gt-telemetry) (MIT). Test laps from [vthinsel/GT7Tracks](https://github.com/vthinsel/GT7Tracks) (MIT).
 
-Not affiliated with Sony Interactive Entertainment, Polyphony Digital. Gran Turismo is a trademark of Sony Interactive Entertainment Inc.
+Not affiliated with Sony Interactive Entertainment or Polyphony Digital. Gran Turismo is a trademark of Sony Interactive Entertainment Inc.
 
 © Eleven North
