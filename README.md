@@ -60,7 +60,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 ## Features
 
 ### Live dashboard
-- A neon ApexNorth layout (its own design, not a Victory clone), scaled to any window size.
+- A neon ApexNorth layout, scaled to any window size.
 - Live race position (P3 / 16), lap of total, and laps left.
 - A large gear indicator with RPM arcs, suggested shift, and speed in km/h or mph.
 - A 12-LED shift light bar driven by the car's own rev alert range. It flashes at the limiter.
@@ -85,6 +85,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 - The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car make and model, laps, best and average lap, and the delta to your previous best there.
 - **Race conditions:** note how each session was run (single player or online, BoP on or off, tyre wear and fuel multipliers) from the Session page. They show as chips on the Activity card. GT7 doesn't send these, so you set them by hand; fuel use itself is always measured.
 - **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
+- Each Activity card shows a transparent render of the car you drove, centred above its make and model (574 cars, `src/assets/cars/`). A car newer than the bundled set just shows its name.
 - Every one of the 41 GT7 venues has a preview photo (`src/assets/tracks/`, one per venue, shared by all its layouts). It shows on the Activity card and in the Session header. A session whose track wasn't recognised gets generated art from its outline.
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
 - **Pit detection:** a refuel or a stop flags the lap as a pit lap and keeps it out of best-lap records.
@@ -267,7 +268,8 @@ src-tauri/src/
     voice.rs             Piper synthesis, WAV cache, playback queue
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
-  components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, icons
+  components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, Art, Flag, icons
+  assets/                tracks/ (41 venue photos), cars/ (574 car renders)
   lib/                   api (typed commands), store (Zustand), format helpers
 ```
 
@@ -353,6 +355,11 @@ The tests cover:
 - [x] Race conditions per session: single player or online, BoP, tyre wear and fuel multipliers (noted by hand; fuel use is measured)
 - [ ] Use the noted tyre wear and fuel multipliers in the strategy model, and compare pace only across matching conditions
 
+### ✅ Phase 3.8: Car images
+- [x] 574 transparent car renders on Activity cards, centred and sized up, mapped from the GT7 car code (`src/lib/carImages.json`)
+- [x] Activity card layout rebalanced so long track names ("Suzuka Circuit", "High Speed Ring") are no longer cut off
+- [ ] Car image in the Session header
+
 ### 🔜 Phase 4: Polish & distribution
 - [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
 - [ ] Bundle Piper and a default voice as a Tauri sidecar
@@ -384,7 +391,7 @@ The tests cover:
   - Barcelona Rallycross can't be recognised yet.
   - Nordschleife Tourist, Nürburgring Endurance II and Fuji (Short) drive the same line as their sister layouts, so they are named as those. Rename the track to fix that; the name sticks.
   - Anything unrecognised is named "Track N (x.xx km)" until you rename it.
-- **Cars** that are newer than the bundled list show as `Car #<code>`. Run `scripts/build_gt7_data.py` to refresh it.
+- **Cars** that are newer than the bundled list show as `Car #<code>`, and about 10 of the newest have no image yet. Run `scripts/build_gt7_data.py` to refresh it.
 - **Position:** race position comes from the packet's `pre_race_position` field, which updates live during races on PS5. GT7 sends no data on other cars, so there are no gaps to the car ahead or behind. A change must hold for about half a second (30 packets) before it counts, and about three seconds before it's announced (six in the opening 25 seconds).
 - **Performance points (PP):** GT7 doesn't send PP or tuning data, so it can't be shown per session.
 - **Tyre wear:** GT7 sends no tyre wear data. Degradation is estimated from the lap-time trend and stated with honest language, never as a percentage.
@@ -394,12 +401,11 @@ The tests cover:
 ---
 
 ## Credits
-- Feature set inspired by [Victory: Race Engineer for GT7](https://victorydash.io).
 - Protocol research: [Nenkai/PDTools](https://github.com/Nenkai/PDTools), [Bornhall/gt7telemetry](https://github.com/Bornhall/gt7telemetry), and the [GTPlanet telemetry thread](https://www.gtplanet.net/forum/threads/overview-of-gt7-telemetry-software.418011/).
 - Voice: [Piper](https://github.com/rhasspy/piper).
 - Car list: [ddm999/gt7info](https://github.com/ddm999/gt7info) (MIT-0).
 - Track catalog and reference lines: [jbhoorasingh/gt7-datalogger-track-data](https://github.com/jbhoorasingh/gt7-datalogger-track-data) (CC0), built on captures from [zetetos/gt-telemetry](https://github.com/zetetos/gt-telemetry) (MIT). Test laps from [vthinsel/GT7Tracks](https://github.com/vthinsel/GT7Tracks) (MIT).
 
-Not affiliated with Sony Interactive Entertainment, Polyphony Digital or Victory. Gran Turismo is a trademark of Sony Interactive Entertainment Inc.
+Not affiliated with Sony Interactive Entertainment, Polyphony Digital. Gran Turismo is a trademark of Sony Interactive Entertainment Inc.
 
 © Eleven North

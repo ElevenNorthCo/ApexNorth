@@ -1,6 +1,6 @@
 # ApexNorth: guide for Claude
 
-ApexNorth is a GT7 live telemetry dashboard and race engineer. It is a Tauri 2 desktop app (Rust backend, React + TypeScript frontend) for macOS, Windows and Linux. It is modeled on the free tier of the iOS app "Victory: Race Engineer for GT7". The long-term goal is an AI race engineer you can chat with.
+ApexNorth is a GT7 live telemetry dashboard and race engineer. It is a Tauri 2 desktop app (Rust backend, React + TypeScript frontend) for macOS, Windows and Linux. The long-term goal is an AI race engineer you can chat with.
 
 The README has the full feature list, the protocol details, and the **phase roadmap**. Check it before starting new feature work, and tick roadmap items off when they ship.
 
@@ -87,7 +87,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Views live in `src/views/`, shared pieces in `src/components/`.
   - `startBridge()` wires backend events into the store.
 - **Dashboard (`views/Dashboard.tsx`):**
-  - It is laid out on a fixed **1000×540 design canvas** with absolute pixel positions, scaled by `ScaleToFit` (ApexNorth's own neon layout, not Victory's).
+  - It is laid out on a fixed **1000×540 design canvas** with absolute pixel positions, scaled by `ScaleToFit` (ApexNorth's neon layout).
   - Its logo drops `components/TopBar.tsx` down over it; every other view shows the TopBar permanently (Lap analysis has none).
   - Tweak positions and sizes in those canvas pixels. Check text fits inside the tiles (fuel labels and lap time padding have needed fixes before).
 - **Styling:**
@@ -100,7 +100,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - **Car images:**
   - 574 transparent 600×350 WebP renders live in `src/assets/cars/<slug>.webp` (about 19 MB, bundled). They are made in the separate repo `~/Projects/ElevenNorth/apexnorthCarAssets` (done, 574 of 574).
   - `src/lib/carImages.json` maps GT7 `car_code` → file name (built from that repo's `gt7-cars.csv`, `GT7 ID` column `carNNNN`). `carImage(code)` in `lib/media.ts` resolves it through a Vite glob. A code with no image (about 10 newer cars in `data/gt7_cars.csv`) just shows no image.
-  - Shown as a thumbnail above the make/model text in the Activity card's Car column; the text stays. Not yet used on the Session header.
+  - Shown as a thumbnail above the make/model text in the Activity card's Car column; the text stays. Not yet used on the Session header. The image is centred and 112 px tall; the Activity card columns are tuned so a two-word track name fits (title 21 px).
   - To add or refresh images: copy the new `.webp` files into `src/assets/cars/` and add their `car_code` → file entries to `carImages.json`. Don't generate or fetch car art.
 - **Race conditions:** `sessions.conditions` (JSON `SessionConditions`: mode offline/online, bop, tyreWear, fuelRate), set with `set_session_conditions` from the Session view; Activity shows them as chips. GT7 sends none of these.
 - **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
