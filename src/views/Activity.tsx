@@ -115,13 +115,13 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
     >
       <span className="absolute right-0 top-0 h-0 w-0 border-l-[22px] border-t-[22px] border-l-transparent" style={{ borderTopColor: c }} />
 
-      <TrackArt venue={s.venue} outline={s.outline} className="w-[230px] shrink-0 max-md:hidden" />
+      <TrackArt venue={s.venue} outline={s.outline} className="w-[170px] shrink-0 max-md:hidden" />
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between py-5 pl-6 pr-3">
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-5 pl-5 pr-2">
         <div>
           <div className="flex items-start gap-3">
             <span className="mt-[2px]"><Flag country={s.country} height={20} /></span>
-            <h2 className="tech line-clamp-2 text-[24px] font-bold leading-[1.1] tracking-[0.03em]">{title}</h2>
+            <h2 className="tech line-clamp-2 min-w-0 break-words text-[21px] font-bold leading-[1.1] tracking-[0.02em]">{title}</h2>
           </div>
           {subtitle && <div className="tech mt-1.5 truncate pl-[1px] text-[15px] text-white/60">{subtitle}</div>}
         </div>
@@ -133,13 +133,13 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
         </div>
       </div>
 
-      <div className="flex w-[130px] shrink-0 items-center justify-center max-xl:hidden">
-        <TrackOutline points={s.outline} size={104} strokeWidth={4} stroke="white" />
+      <div className="flex w-[100px] shrink-0 items-center justify-center max-xl:hidden">
+        <TrackOutline points={s.outline} size={84} strokeWidth={4} stroke="white" />
       </div>
 
-      <div className="my-4 flex w-[300px] shrink-0 flex-col justify-center gap-1 border-l border-white/10 px-6 max-lg:hidden">
+      <div className="my-4 flex w-[290px] shrink-0 flex-col items-center justify-center gap-1 text-center border-l border-white/10 px-6 max-lg:hidden">
         {img ? (
-          <img src={img} alt={fullCar} className="h-[84px] w-full object-contain object-left" draggable={false} />
+          <img src={img} alt={fullCar} className="h-[112px] w-full object-contain object-center" draggable={false} />
         ) : (
           <div className="tech text-[12px] text-white/55">Car</div>
         )}
@@ -147,7 +147,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
           <div className="tech truncate text-[12px] text-white/70">{maker}</div>
           <div className="tech line-clamp-2 text-[14px] font-semibold leading-snug">{model || maker}</div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap justify-center gap-1.5">
           {cls && <Chip color="#b44cff">{cls}</Chip>}
           <Chip color={c}>{kind.label}</Chip>
           {conditionTags(s.conditions).map((t) => (
@@ -158,7 +158,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
         </div>
       </div>
 
-      <div className="my-5 grid w-[330px] shrink-0 grid-cols-[1fr_1.3fr] content-center gap-x-5 gap-y-4 border-l border-white/10 px-6">
+      <div className="my-5 grid w-[310px] shrink-0 grid-cols-[1fr_1.3fr] content-center gap-x-5 gap-y-4 border-l border-white/10 px-6">
         <Stat label="Laps">{s.lapCount}</Stat>
         <Stat label="Best Lap" color="#39ff7a" big>
           {lapTime(s.bestMs)}
