@@ -1,3 +1,4 @@
+import carImageMap from "./carImages.json";
 import type { SessionConditions, SessionKind, SessionSummary } from "./api";
 
 /**
@@ -14,6 +15,24 @@ const trackFiles = import.meta.glob("../assets/tracks/*.{jpg,jpeg,png,webp}", {
 const byBase = (files: Record<string, string>) =>
   Object.fromEntries(Object.entries(files).map(([path, url]) => [path.split("/").pop()!.replace(/\.\w+$/, ""), url]));
 const TRACK_IMAGES = byBase(trackFiles);
+
+/**
+ * Car renders, one per GT7 car: src/assets/cars/<slug>.webp (600×350, transparent,
+ * left-facing three-quarter). carImages.json maps GT7 car_code → file name; it comes from
+ * the apexnorthCarAssets repo (gt7-cars.csv). A code with no entry shows no image.
+ */
+const carFiles = import.meta.glob("../assets/cars/*.webp", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+const CAR_IMAGES = byBase(carFiles);
+
+export function carImage(carCode: number | null | undefined): string | undefined {
+  if (carCode == null) return undefined;
+  const file = (carImageMap as Record<string, string>)[String(carCode)];
+  return file ? CAR_IMAGES[file.replace(/\.\w+$/, "")] : undefined;
+}
 
 /** "Autódromo de Interlagos" → "autodromo-de-interlagos". */
 export function slug(s: string): string {

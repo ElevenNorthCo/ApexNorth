@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type SessionKind, type SessionSummary } from "../lib/api";
 import { carName, delta, lapTime, shortDate, timeOfDay } from "../lib/format";
-import { KINDS, carClass, conditionTags, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
+import { KINDS, carClass, carImage, conditionTags, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
 import { useStore } from "../lib/store";
 import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
@@ -101,11 +101,12 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
   const fullCar = carName(s.carCode, s.carName);
   const [maker, model] = splitCar(fullCar);
   const cls = carClass(s.carName);
+  const img = carImage(s.carCode);
   const c = kind.color;
   return (
     <button
       onClick={onOpen}
-      className="group relative flex h-[176px] w-full items-stretch overflow-hidden rounded-[16px] text-left transition hover:brightness-110"
+      className="group relative flex h-[208px] w-full items-stretch overflow-hidden rounded-[16px] text-left transition hover:brightness-110"
       style={{
         border: `1.5px solid ${c}`,
         background: "linear-gradient(90deg, rgba(10,16,15,0.95), rgba(6,9,8,0.95))",
@@ -136,11 +137,15 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
         <TrackOutline points={s.outline} size={104} strokeWidth={4} stroke="white" />
       </div>
 
-      <div className="my-5 flex w-[250px] shrink-0 flex-col justify-center gap-2 border-l border-white/10 px-6 max-lg:hidden">
-        <div className="tech text-[12px] text-white/55">Car</div>
+      <div className="my-4 flex w-[300px] shrink-0 flex-col justify-center gap-1 border-l border-white/10 px-6 max-lg:hidden">
+        {img ? (
+          <img src={img} alt={fullCar} className="h-[84px] w-full object-contain object-left" draggable={false} />
+        ) : (
+          <div className="tech text-[12px] text-white/55">Car</div>
+        )}
         <div className="leading-tight">
-          <div className="tech truncate text-[14px] text-white/70">{maker}</div>
-          <div className="tech line-clamp-2 text-[17px] font-semibold leading-snug">{model || maker}</div>
+          <div className="tech truncate text-[12px] text-white/70">{maker}</div>
+          <div className="tech line-clamp-2 text-[14px] font-semibold leading-snug">{model || maker}</div>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {cls && <Chip color="#b44cff">{cls}</Chip>}
