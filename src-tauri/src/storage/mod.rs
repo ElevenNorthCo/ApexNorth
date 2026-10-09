@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::catalog::{cars, tracks};
-use crate::session::models::{CompletedLap, Sample};
+use crate::session::models::{CompletedLap, InvalidReason, Sample};
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -588,6 +588,33 @@ impl Db {
         Ok(())
     }
 
+    /// Marks an already stored lap as not counting (see `EngineEvent::LapRevoked`).
+    pub fn revoke_lap(&self, session_id: i64, lap_no: i16, reason: InvalidReason) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE laps SET is_valid = 0, invalid_reason = ?3 WHERE session_id = ?1 AND lap_no = ?2",
+                params![session_id, lap_no, reason.as_str()],
+            )
+            .map_err(err)?;
+        Ok(())
+    }
+
+    /// Repairs laps saved before grid laps were checked: a valid first lap
+    /// clearly shorter than the session's next valid lap started past the
+    /// line, so it doesn't count. Returns how many laps were revoked.
+    pub fn revoke_short_grid_laps(&self) -> Result<usize> {
+        self.conn
+            .execute(
+                "UPDATE laps SET is_valid = 0, invalid_reason = ?2
+                 WHERE lap_no = 1 AND is_valid = 1 AND length_m < ?1 * (
+                    SELECT n.length_m FROM laps n
+                    WHERE n.session_id = laps.session_id AND n.lap_no > 1 AND n.is_valid = 1
+                    ORDER BY n.lap_no LIMIT 1)",
+                params![crate::session::engine::GRID_LAP_MIN_FRACTION as f64, InvalidReason::InsufficientDistance.as_str()],
+            )
+            .map_err(err)
+    }
+
     pub fn delete_session(&self, session_id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM sessions WHERE id = ?1", [session_id]).map_err(err)?;
         Ok(())
@@ -664,6 +691,27 @@ mod tests {
         assert_eq!(db.best_lap_for(t.id, 1234).unwrap().unwrap().0, 95_000);
         db.delete_session(s).unwrap();
         assert!(db.list_sessions().unwrap().is_empty());
+    }
+
+    #[test]
+    fn short_grid_laps_are_revoked() {
+        let db = Db::memory().unwrap();
+        let mut add = |laps: &[(u32, f32)]| {
+            let s = db.create_session(1, laps.len() as i32, 1).unwrap();
+            for (i, (time_ms, length_m)) in laps.iter().enumerate() {
+                db.insert_lap(s, &CompletedLap { lap_no: i as i16 + 1, length_m: *length_m, ..lap(*time_ms, true) }).unwrap();
+            }
+            s
+        };
+        let short = add(&[(85_000, 4225.0), (88_600, 4530.0)]);
+        let full = add(&[(86_000, 4500.0), (88_600, 4530.0)]);
+        assert_eq!(db.revoke_short_grid_laps().unwrap(), 1);
+        let first = |s| db.session_laps(s).unwrap().remove(0);
+        assert!(!first(short).is_valid);
+        assert_eq!(first(short).invalid_reason.as_deref(), Some("insufficient_distance"));
+        assert!(first(full).is_valid);
+        assert_eq!(db.list_sessions().unwrap().iter().find(|x| x.id == short).unwrap().best_ms, Some(88_600));
+        assert_eq!(db.revoke_short_grid_laps().unwrap(), 0);
     }
 
     fn samples_on(line: &[[f32; 2]]) -> Vec<Sample> {

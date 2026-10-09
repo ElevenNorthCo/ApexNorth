@@ -31,6 +31,10 @@ const POSITION_CONFIRM: u32 = 30;
 const JUMP_RESOLVE_TICKS: u32 = 60;
 /// A lap shorter than this fraction of the reference lap didn't cover the track.
 const MIN_LAP_FRACTION: f32 = 0.75;
+/// A race's first lap from the grid must cover this much of the next lap's
+/// distance to count. Where the grid sits past the line (Fuji) it falls short
+/// and would otherwise be an unbeatable "best".
+pub const GRID_LAP_MIN_FRACTION: f32 = 0.97;
 /// A sector best has to beat the old one by this much to be called a best.
 const PB_MARGIN_MS: u32 = 20;
 
@@ -127,10 +131,20 @@ pub enum EngineEvent {
     SectorCompleted(SectorSplit),
     /// The current lap just became invalid (also logged for diagnosis).
     LapInvalidated { lap_no: i16, reason: InvalidReason },
+    /// An earlier, already completed lap turned out not to count: a grid-start
+    /// lap that came up short against the next full lap.
+    LapRevoked { lap_no: i16, reason: InvalidReason },
     Incident(Incident),
     PositionChanged { to: i16 },
     /// Race position changed during the race (confirmed over POSITION_CONFIRM packets).
     RacePositionChanged { from: i16, to: i16 },
+}
+
+#[derive(Debug, Clone)]
+struct GridLap {
+    lap_no: i16,
+    time_ms: u32,
+    length: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -275,6 +289,12 @@ pub struct Engine {
     session_best: Option<u32>,
     best_sectors: [Option<u32>; SECTOR_COUNT],
     reference: Option<RefLap>,
+    /// A valid grid-start lap held out of the bests until the next valid lap
+    /// shows whether it was a full lap.
+    grid_lap: Option<GridLap>,
+    /// Time of a revoked grid lap, so the game's own best (which counts it)
+    /// is ignored when it matches.
+    revoked_ms: Option<u32>,
     last_lap_ms: Option<u32>,
     anchor: Option<Anchor>,
     suspect: Option<Suspect>,
@@ -349,6 +369,8 @@ impl Engine {
         self.session_best = None;
         self.best_sectors = [None; SECTOR_COUNT];
         self.reference = None;
+        self.grid_lap = None;
+        self.revoked_ms = None;
         self.last_lap_ms = None;
         self.pending = None;
         self.race_pos = None;
@@ -653,6 +675,21 @@ impl Engine {
         }
     }
 
+    fn count_session_best(&mut self, time_ms: u32) {
+        if self.session_best.map_or(true, |b| time_ms < b) {
+            self.session_best = Some(time_ms);
+        }
+    }
+
+    /// A counted lap becomes the session best and delta reference if faster.
+    fn count_best(&mut self, time_ms: u32, samples: &[Sample]) {
+        self.count_session_best(time_ms);
+        if self.reference.as_ref().map_or(true, |r| time_ms < r.time_ms) {
+            self.reference = Some(RefLap { time_ms, samples: samples.to_vec(), standing_start: false });
+            self.refresh_lap_reference();
+        }
+    }
+
     /// The game updates `last_lap_ms` on (or shortly after) the lap counter
     /// change, so laps are finalised once the official time arrives.
     fn settle_pending(&mut self, p: &Packet, dt_ticks: u32, ev: &mut Vec<EngineEvent>) {
@@ -712,20 +749,36 @@ impl Engine {
         }
         self.tyres.record_lap(buf.lap_no, official, is_valid, is_pit, fuel_used_pct);
 
+        // The first full lap after the grid settles whether the grid lap counts.
+        if is_valid && !buf.standing_start {
+            if let Some(g) = self.grid_lap.take() {
+                if g.length < length * GRID_LAP_MIN_FRACTION {
+                    log::info!("grid lap {} ({} ms, {:.0} m vs {:.0} m) does not count: started past the line", g.lap_no, g.time_ms, g.length, length);
+                    self.revoked_ms = Some(g.time_ms);
+                    if self.reference.as_ref().is_some_and(|r| r.standing_start && r.time_ms == g.time_ms) {
+                        self.reference = None;
+                    }
+                    ev.push(EngineEvent::LapRevoked { lap_no: g.lap_no, reason: InvalidReason::InsufficientDistance });
+                } else {
+                    self.count_session_best(g.time_ms);
+                }
+            }
+        }
+
         let ctx_session_best = self.session_best;
         let ctx_reference = self.reference_ms();
         let sectors_ms = sector_times(&buf.samples, official);
-        if is_valid {
-            if self.session_best.map_or(true, |b| official < b) {
-                self.session_best = Some(official);
-            }
-            if !buf.standing_start {
-                self.merge_best_sectors(&sectors_ms);
-            }
+        if is_valid && buf.standing_start {
+            // Still the live reference for now (sector positions, delta), but
+            // no session best until the next lap shows it was a full lap.
             if self.reference.as_ref().map_or(true, |r| official < r.time_ms) {
-                self.reference = Some(RefLap { time_ms: official, samples: buf.samples.clone(), standing_start: buf.standing_start });
+                self.reference = Some(RefLap { time_ms: official, samples: buf.samples.clone(), standing_start: true });
                 self.refresh_lap_reference();
             }
+            self.grid_lap = Some(GridLap { lap_no: buf.lap_no, time_ms: official, length });
+        } else if is_valid {
+            self.merge_best_sectors(&sectors_ms);
+            self.count_best(official, &buf.samples);
         }
         self.last_lap_ms = Some(official);
 
@@ -775,7 +828,7 @@ impl Engine {
                 .map(|t| l.elapsed_ms() as i32 - t.round() as i32),
             _ => None,
         };
-        let game_best = (p.best_lap_ms > 0).then_some(p.best_lap_ms as u32);
+        let game_best = (p.best_lap_ms > 0).then_some(p.best_lap_ms as u32).filter(|b| Some(*b) != self.revoked_ms);
         let best_lap_ms = match (game_best, self.session_best) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -982,6 +1035,32 @@ mod tests {
         assert!(laps[1].samples.len() > 250);
         // 6 % per lap of a 100 L tank.
         assert!((e.fuel.per_lap().unwrap() - 6.0).abs() < 0.2);
+    }
+
+    #[test]
+    fn short_grid_lap_is_revoked() {
+        // The grid sits 55 m past the line, so lap 1 covers 445 m and is quickest.
+        let mut e = Engine::new();
+        let ev = drive(&mut e, &[55.0, 50.0, 48.0], |lap, _, p| {
+            if lap == 1 {
+                p.position[0] *= 0.89;
+                p.speed *= 0.89;
+            }
+            true
+        });
+        let l = laps(&ev);
+        assert!(l[0].is_valid, "judged once the next lap is in");
+        assert!(ev.iter().any(|e| matches!(e, EngineEvent::LapRevoked { lap_no: 1, reason: InvalidReason::InsufficientDistance })));
+        assert_eq!(e.session_best, Some(l[1].time_ms));
+        assert_eq!(e.reference_ms(), Some(l[1].time_ms));
+    }
+
+    #[test]
+    fn full_grid_lap_counts() {
+        let mut e = Engine::new();
+        let ev = drive(&mut e, &[55.0, 50.0, 50.0], |_, _, _| true);
+        assert!(!ev.iter().any(|e| matches!(e, EngineEvent::LapRevoked { .. })));
+        assert_eq!(e.session_best, Some(laps(&ev)[0].time_ms));
     }
 
     #[test]

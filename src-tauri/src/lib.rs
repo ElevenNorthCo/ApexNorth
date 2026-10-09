@@ -169,6 +169,13 @@ impl Handler for LiveHandler {
                     self.session = None;
                 }
                 EngineEvent::LapCompleted(lap, _) => self.record_lap(lap),
+                EngineEvent::LapRevoked { lap_no, reason } => {
+                    if let Some(id) = self.session.as_ref().and_then(|c| c.db_id) {
+                        if let Err(e) = self.db.lock().revoke_lap(id, *lap_no, *reason) {
+                            log::error!("revoke lap: {e}");
+                        }
+                    }
+                }
                 EngineEvent::LapInvalidated { lap_no, reason } => {
                     let _ = self.app.emit("lap_invalid", LapInvalid { lap_no: *lap_no, reason: reason.as_str() });
                 }
@@ -391,6 +398,11 @@ pub fn run() {
 
             let db = Db::open(&data.join("apexnorth.db"))?;
             let _ = db.prune_empty_sessions();
+            match db.revoke_short_grid_laps() {
+                Ok(n) if n > 0 => log::info!("revoked {n} short grid lap(s)"),
+                Err(e) => log::error!("revoke short grid laps: {e}"),
+                _ => {}
+            }
             let settings_path = config.join("settings.json");
             let mut settings = Settings::load(&settings_path);
             if settings.voice.piper_path.is_empty() {
