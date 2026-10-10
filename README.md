@@ -15,6 +15,7 @@
   <img alt="Rust" src="https://img.shields.io/badge/backend-Rust-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0b0f0d" />
   <img alt="React" src="https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61dafb?style=flat-square&logo=react&logoColor=white&labelColor=0b0f0d" />
   <img alt="Status" src="https://img.shields.io/badge/status-early%20development-ffc81a?style=flat-square&labelColor=0b0f0d" />
+  <a href="LICENSE"><img alt="License: PolyForm Noncommercial" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-39ff7a?style=flat-square&labelColor=0b0f0d" /></a>
 </p>
 
 <p align="center">
@@ -23,7 +24,8 @@
   <a href="#connecting-to-your-playstation">Connect</a> &middot;
   <a href="#race-engineer-voice">Voice</a> &middot;
   <a href="#roadmap-phases--milestones">Roadmap</a> &middot;
-  <a href="#development">Development</a>
+  <a href="#development">Development</a> &middot;
+  <a href="#license">License</a>
 </p>
 
 <p align="center">
@@ -471,6 +473,22 @@ The tests cover:
 - Car list: [ddm999/gt7info](https://github.com/ddm999/gt7info) (MIT-0).
 - Track catalog and reference lines: [jbhoorasingh/gt7-datalogger-track-data](https://github.com/jbhoorasingh/gt7-datalogger-track-data) (CC0), built on captures from [zetetos/gt-telemetry](https://github.com/zetetos/gt-telemetry) (MIT). Test laps from [vthinsel/GT7Tracks](https://github.com/vthinsel/GT7Tracks) (MIT).
 
-Not affiliated with Sony Interactive Entertainment or Polyphony Digital. Gran Turismo is a trademark of Sony Interactive Entertainment Inc.
+Not affiliated with Sony Interactive Entertainment or Polyphony Digital. Gran Turismo is a trademark of Sony Interactive Entertainment Inc. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for everything ApexNorth includes and its licenses.
 
-© Eleven North
+---
+
+## License
+
+ApexNorth is **free**, and the source is public. It's released under the [PolyForm Noncommercial License 1.0.0](LICENSE):
+
+- ✅ Use it, share it, change it and build on it for personal, hobby, league, club, school or other **noncommercial** use.
+- ❌ You may not sell it, charge for it, bundle it into a paid product or service, or otherwise use it to make money.
+- 💬 Want to use it commercially? Contact Eleven North for a separate license.
+
+Eleven North keeps all rights to offer ApexNorth, or features built on it, under other terms in the future.
+
+**Contributing:** pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), including the short contribution license.
+
+**Support the project:** if ApexNorth helps your racing, the **Sponsor** button at the top of this page is the best way to say thanks.
+
+© 2026 Eleven North

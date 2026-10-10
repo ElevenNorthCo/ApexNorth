@@ -1,0 +1,7 @@
+# Shows the "Sponsor" button on the repo. Turn on GitHub Sponsors for the
+# ElevenNorthCo account first (github.com/sponsors), or swap in another
+# platform below (remove the # to use it).
+github: [ElevenNorthCo]
+# ko_fi: your-ko-fi-name
+# buy_me_a_coffee: your-name
+# custom: ["https://your-donation-link"]

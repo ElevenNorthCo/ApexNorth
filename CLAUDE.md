@@ -144,6 +144,10 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Voices are in `~/Projects/ElevenNorth/PiperTest/models` (`en_US-ryan-high` is selected).
 - App data is in `~/Library/Application Support/com.elevennorth.apexnorth/` (`apexnorth.db`, `settings.json`, `voices/`).
 
+## License
+- ApexNorth is **PolyForm Noncommercial 1.0.0** (`LICENSE`, verbatim text plus `Required Notice:` lines). Eleven North keeps commercial rights (future paid hosted-AI tier). Contributions come in under the grant in `CONTRIBUTING.md` (PR template checkbox) so they can be relicensed.
+- Third-party components and data are listed in `THIRD_PARTY_NOTICES.md`; add new bundled libraries, voices or datasets there. `.github/FUNDING.yml` drives the Sponsor button.
+
 ## Workflow
 - Repo: private `github.com/ElevenNorthCo/ApexNorth`, branch `main`.
   - Commit and push when the user asks.

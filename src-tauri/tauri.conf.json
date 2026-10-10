@@ -48,6 +48,9 @@
       "nsis": {
         "installMode": "currentUser"
       }
-    }
+    },
+    "copyright": "\u00a9 2026 Eleven North. Free for noncommercial use (PolyForm Noncommercial 1.0.0).",
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "licenseFile": "../LICENSE"
   }
 }
