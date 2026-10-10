@@ -7,6 +7,7 @@ install Piper.
     python3 scripts/fetch-voice.py --target x86_64-apple-darwin
 
 What lands in resources/tts:
+    apexnorth-voice  the voice helper (src-tauri/voice-helper, built with cargo)
     lib/             sherpa-onnx C API + ONNX Runtime for the target (from npm)
     espeak-ng-data/  phoneme data for espeak-ng
     voices/          the bundled Piper voice (.onnx + .onnx.json)
@@ -20,6 +21,7 @@ import io
 import json
 import platform
 import shutil
+import subprocess
 import sys
 import tarfile
 import urllib.request
@@ -136,6 +138,19 @@ def fetch_voice(voice_id):
         print(f"  no model card ({e})")
 
 
+def build_helper(target):
+    """The voice helper is its own GPL program (it loads espeak-ng); the app
+    only talks to it over a pipe."""
+    print(f"voice helper for {target}")
+    manifest = ROOT / "src-tauri" / "voice-helper" / "Cargo.toml"
+    subprocess.run(["cargo", "build", "--release", "--manifest-path", str(manifest), "--target", target], check=True)
+    exe = "apexnorth-voice.exe" if "windows" in target else "apexnorth-voice"
+    built = ROOT / "src-tauri" / "voice-helper" / "target" / target / "release" / exe
+    shutil.copy2(built, OUT / exe)
+    (OUT / exe).chmod(0o755)
+    shutil.copy2(ROOT / "src-tauri" / "voice-helper" / "COPYING", OUT / "COPYING-apexnorth-voice.txt")
+
+
 def check_catalog():
     """Every downloadable voice must exist (run in CI)."""
     bad = []
@@ -156,6 +171,10 @@ def check_catalog():
 NOTICE = """ApexNorth built-in voice
 ========================
 
+apexnorth-voice  The voice helper, a separate program (GPL-3.0-or-later, see
+                 COPYING-apexnorth-voice.txt). Source:
+                 https://github.com/ElevenNorthCo/ApexNorth/tree/main/src-tauri/voice-helper
+                 ApexNorth itself only starts it and sends it text.
 lib/             sherpa-onnx {ver} (Apache-2.0) https://github.com/k2-fsa/sherpa-onnx
                  with ONNX Runtime (MIT) https://github.com/microsoft/onnxruntime
                  and espeak-ng (GPL-3.0) https://github.com/espeak-ng/espeak-ng
@@ -170,6 +189,7 @@ def main():
     ap.add_argument("--target", default=host_target(), choices=sorted(TARGETS))
     ap.add_argument("--voice", default=CATALOG["bundled"])
     ap.add_argument("--check-catalog", action="store_true", help="only check that every catalog voice can be downloaded")
+    ap.add_argument("--no-helper", action="store_true", help="skip building the voice helper")
     a = ap.parse_args()
     if a.check_catalog:
         check_catalog()
@@ -178,6 +198,8 @@ def main():
     fetch_libs(a.target)
     fetch_espeak()
     fetch_voice(a.voice)
+    if not a.no_helper:
+        build_helper(a.target)
     (OUT / "NOTICE.txt").write_text(NOTICE.format(ver=SHERPA_VERSION))
     print(f"done: {OUT}")
 

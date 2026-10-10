@@ -87,12 +87,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: |
+            src-tauri -> target
+            src-tauri/voice-helper -> target
           key: ${{ matrix.target }}
 
       - run: npm ci
 
-      - name: Download the built-in voice (engine, espeak-ng data, voice)
+      - name: Built-in voice (helper, engine, espeak-ng data, voice)
         run: python scripts/fetch-voice.py --target ${{ matrix.target }}
 
       - name: Check the downloadable voices exist

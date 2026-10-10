@@ -89,7 +89,6 @@ dependencies = [
  "crossbeam-channel",
  "dirs 5.0.1",
  "keepawake",
- "libloading 0.8.9",
  "local-ip-address",
  "log",
  "parking_lot",

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::engineer::tts;
+use crate::engineer::voice_helper;
 
 /// The same list `scripts/fetch-voice.py` bundles from.
 const CATALOG: &str = include_str!("../voices.json");
@@ -62,7 +62,7 @@ pub fn builtin_dir(resource_dir: Option<PathBuf>) -> Option<PathBuf> {
     if cfg!(debug_assertions) {
         candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("tts"));
     }
-    candidates.into_iter().find(|d| tts::runtime_present(d))
+    candidates.into_iter().find(|d| voice_helper::runtime_present(d))
 }
 
 /// Model path of the voice shipped with the app.

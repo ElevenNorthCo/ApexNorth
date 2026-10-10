@@ -1,7 +1,6 @@
-//! Built-in Piper voices. sherpa-onnx (ONNX Runtime + espeak-ng) is shipped
-//! with the app as a shared library and loaded at runtime; the voice model
-//! stays in memory, so a new phrase takes a fraction of a second instead of
-//! starting a Piper process.
+//! Piper voices through sherpa-onnx (ONNX Runtime + espeak-ng), shipped as
+//! shared libraries next to this helper and loaded at runtime. The voice
+//! model stays in memory, so a new phrase takes a fraction of a second.
 //!
 //! Voices are ordinary Piper voices (`name.onnx` + `name.onnx.json`). sherpa
 //! reads the voice settings from the model's ONNX metadata, which Piper models
@@ -357,35 +356,5 @@ mod tests {
         assert_eq!(w.len(), 44 + 6);
         assert_eq!(&w[0..4], b"RIFF");
         assert_eq!(i16::from_le_bytes([w[46], w[47]]), 32767);
-    }
-
-    /// Speaks with the real runtime and voice. Point `APEXNORTH_TTS_DIR` at a
-    /// folder with `lib/`, `espeak-ng-data/` and `voices/` (what
-    /// `scripts/fetch-voice.py` downloads into `src-tauri/resources/tts`).
-    #[test]
-    #[ignore]
-    fn speaks_with_the_bundled_voice() {
-        let dir = std::env::var("APEXNORTH_TTS_DIR").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("resources/tts"));
-        assert!(runtime_present(&dir), "no voice runtime in {}", dir.display());
-        let rt = Runtime::get(&dir).unwrap();
-        let voices = crate::settings::find_voices(&[dir.join("voices")]);
-        assert!(!voices.is_empty(), "no voices in {}", dir.display());
-        let cache = std::env::temp_dir().join(format!("apexnorth-tts-test-{}", std::process::id()));
-        for v in &voices {
-            let started = std::time::Instant::now();
-            let mut s = Synth::load(rt, Path::new(v), &cache).unwrap();
-            let loaded = started.elapsed();
-            let t = std::time::Instant::now();
-            let a = s.speak("Box this lap. Pit window laps 5 to 7.", 1.0).unwrap();
-            let spoke = t.elapsed();
-            let secs = a.len() as f32 / s.sample_rate as f32;
-            let rms = (a.iter().map(|x| x * x).sum::<f32>() / a.len().max(1) as f32).sqrt();
-            println!("{v}: load {loaded:?}, phrase {spoke:?}, {secs:.2} s of audio, rms {rms:.3}");
-            assert!(secs > 1.0 && secs < 8.0, "audio length {secs}");
-            assert!(rms > 0.01, "silent audio");
-            let faster = s.speak("Box this lap. Pit window laps 5 to 7.", 0.8).unwrap();
-            assert!(faster.len() < a.len(), "length scale speeds it up");
-        }
-        let _ = std::fs::remove_dir_all(cache);
     }
 }

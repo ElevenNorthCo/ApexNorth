@@ -35,7 +35,6 @@ crossbeam-channel = "0.5"
 keepawake = "0.5"
 dirs = "5"
 log = "0.4"
-libloading = "0.8"
 ureq = "2"
 
 

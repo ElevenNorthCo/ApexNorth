@@ -27,3 +27,5 @@ jobs:
       - run: npx tsc --noEmit
       - run: cargo test
         working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri/voice-helper

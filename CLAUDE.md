@@ -50,7 +50,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
        engineer/rules.rs  → candidate Calls (+ live.rs: tyre temps, wheel slip)
          → director.rs    chatter level, category toggle, anti-nag cooldown, routine gap, calm-moment hold
          → voice.rs       priority queue (High clears Low) → Speaker → cached WAV → rodio
-             └ tts.rs     built-in Piper: sherpa-onnx C API via libloading, voice kept loaded
+             └ voice_helper.rs  runs `apexnorth-voice` (src-tauri/voice-helper, GPL) over a JSON-lines pipe
                           (falls back to an external piper CLI when resources/tts is empty)
        emits Tauri events: "telemetry" (LiveState, 30 Hz), "connection", "lap", "lap_invalid", "engineer", "voice_error"
 ```
@@ -118,8 +118,9 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - Don't use `window.alert` or `window.confirm`. Use inline confirms instead (see delete session in `views/Session.tsx`).
 
 ## Built-in voice & releases
-- `engineer/tts.rs` loads sherpa-onnx **1.12.9** (`#[repr(C)]` structs must match that version's `c-api.h`; the npm packages `sherpa-onnx-<platform>@1.12.9` carry the libraries). Piper voices (`.onnx` + `.onnx.json`) are prepared once into the cache: metadata appended to the ONNX protobuf (field 14) and `tokens.txt` from the phoneme map (single-character tokens only: sherpa calls `exit()` on a bad token file, so validate before `SherpaOnnxCreateOfflineTts`).
-- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`lib/`, `espeak-ng-data/`, `voices/en_US-ryan-high`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
+- **GPL boundary:** espeak-ng (inside the sherpa-onnx library) is GPL-3.0, so it is only ever loaded by the separate helper program `src-tauri/voice-helper` (`apexnorth-voice`, GPL-3.0-or-later, its own Cargo workspace). The app (PolyForm) must never link or `dlopen` sherpa/espeak itself; it starts the helper and sends `{"op":"load"|"speak"}` lines (see the helper's `main.rs`). A helper crash only stops the voice; `Speaker` restarts it.
+- `voice-helper/src/tts.rs` loads sherpa-onnx **1.12.9** (`#[repr(C)]` structs must match that version's `c-api.h`; the npm packages `sherpa-onnx-<platform>@1.12.9` carry the libraries). Piper voices (`.onnx` + `.onnx.json`) are prepared once into the cache: metadata appended to the ONNX protobuf (field 14) and `tokens.txt` from the phoneme map (single-character tokens only: sherpa calls `exit()` on a bad token file, so validate before `SherpaOnnxCreateOfflineTts`).
+- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`apexnorth-voice` built with cargo, `lib/`, `espeak-ng-data/`, `voices/en_US-ryan-high`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
 - `src-tauri/voices.json` is the voice catalog (bundled + 4 downloadable from HuggingFace `rhasspy/piper-voices` v1.0.0), read by Rust and the fetch script.
 - `.github/workflows/release.yml`: tag `v*` → 4 installers with fixed names (`ApexNorth-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-Setup.exe`, `-Linux.AppImage`/`.deb`), voice smoke test (`speaks_with_the_bundled_voice`, ignored locally) on mac arm64, Windows, Linux, then a GitHub Release. Dash tags are pre-releases. **Actions → Release → Run workflow** with a version publishes too (the release action creates the tag); Claude's sessions can't push tags or dispatch workflows, but a pushed commit whose message contains `[build installers]` builds without publishing. `install.sh` / `install.ps1` download `releases/latest/download/<fixed name>`; `lib/updates.ts` shows the TopBar **Update** button from `releases/latest`. All of these need the repo to be public.
 - macOS builds are ad-hoc signed (`signingIdentity: "-"`, `hardenedRuntime: false` so the bundled dylibs load).
@@ -146,7 +147,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 
 ## License
 - ApexNorth is **PolyForm Noncommercial 1.0.0** (`LICENSE`, verbatim text plus `Required Notice:` lines). Eleven North keeps commercial rights (future paid hosted-AI tier). Contributions come in under the grant in `CONTRIBUTING.md` (PR template checkbox) so they can be relicensed.
-- Third-party components and data are listed in `THIRD_PARTY_NOTICES.md`; add new bundled libraries, voices or datasets there. `.github/FUNDING.yml` drives the Sponsor button.
+- The voice helper is GPL-3.0-or-later (`src-tauri/voice-helper/COPYING`). Third-party components and data are listed in `THIRD_PARTY_NOTICES.md`; add new bundled libraries, voices or datasets there. `.github/FUNDING.yml` drives the Sponsor button.
 
 ## Workflow
 - Repo: private `github.com/ElevenNorthCo/ApexNorth`, branch `main`.

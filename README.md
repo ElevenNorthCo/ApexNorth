@@ -127,7 +127,7 @@ If it can't find the console:
 
 ## Race engineer voice
 
-The voice is built in: ApexNorth ships the Piper voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) and the **Ryan** voice, so callouts work straight after installing. The voice stays loaded in memory, so a new phrase takes a fraction of a second, and repeated callouts play instantly from a cache.
+The voice is built in: ApexNorth ships the Piper voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) and the **Ryan** voice, so callouts work straight after installing. It runs in a small helper program, `apexnorth-voice` (GPL-3.0, source in [`src-tauri/voice-helper`](src-tauri/voice-helper)), that keeps the voice loaded in memory: a new phrase takes a fraction of a second, repeated callouts play instantly from a cache, and if the voice engine ever crashes the app carries on and restarts it.
 
 In **Settings → Race engineer voice**:
 - **More voices:** download Alan (British), Northern English, Lessac or Amy with one click. They're fetched once from [Piper voices](https://huggingface.co/rhasspy/piper-voices) and then work offline.
@@ -233,7 +233,7 @@ PS5/PS4 ──UDP 33740──▶ telemetry/udp.rs   heartbeat + discovery + rece
                          ├─▶ storage (SQLite + zstd lap blobs) ◀─ Activity / Lap Analysis
                          └─▶ engineer/rules.rs   what to say (structured calls)
                                └─ director.rs    chatter level, toggles, anti-nag, timing
-                                    └─ voice.rs  Piper voice (tts.rs, in-process) → WAV cache → rodio
+                                    └─ voice.rs  apexnorth-voice helper (Piper) → WAV cache → rodio
 ```
 
 - All the heavy work happens in Rust: decrypting, lap logic, recording and callouts. The UI only renders.
@@ -300,8 +300,9 @@ src-tauri/src/
     live.rs              tyre temperature and wheel-slip watchers
     director.rs          chatter level, toggles, anti-nag, context timing
     phrases.rs           phrase variation, spoken numbers
-    tts.rs               built-in Piper voice: sherpa-onnx loaded at runtime, voice kept in memory
+    voice_helper.rs      runs the apexnorth-voice helper and talks to it over a pipe
     voice.rs             synthesis, WAV cache, playback queue
+src-tauri/voice-helper/  apexnorth-voice (GPL-3.0): sherpa-onnx + espeak-ng, Piper voices kept loaded
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
   components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, Art, Flag, icons
@@ -321,7 +322,7 @@ You need [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) 20+, 
 git clone https://github.com/ElevenNorthCo/ApexNorth.git
 cd ApexNorth
 npm install
-python3 scripts/fetch-voice.py   # built-in voice: engine, espeak-ng data, Ryan (~150 MB, once)
+python3 scripts/fetch-voice.py   # built-in voice: helper, engine, espeak-ng data, Ryan (~150 MB, once)
 npm run tauri dev                # app with hot reload
 cd src-tauri && cargo test       # Rust unit tests
 npx tsc --noEmit                 # type-check the frontend
@@ -486,6 +487,8 @@ ApexNorth is **free**, and the source is public. It's released under the [PolyFo
 - 💬 Want to use it commercially? Contact Eleven North for a separate license.
 
 Eleven North keeps all rights to offer ApexNorth, or features built on it, under other terms in the future.
+
+The voice helper in [`src-tauri/voice-helper`](src-tauri/voice-helper) is a separate program under the **GPL-3.0-or-later**, because it uses espeak-ng. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 **Contributing:** pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), including the short contribution license.
 

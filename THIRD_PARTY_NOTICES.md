@@ -2,13 +2,17 @@
 
 ApexNorth's own code is under the [PolyForm Noncommercial License 1.0.0](LICENSE). It includes or downloads the following, which stay under their own licenses. Those licenses, not ApexNorth's, apply to these parts.
 
+## The voice helper (GPL)
+
+The race engineer's voice runs in **`apexnorth-voice`**, a separate program shipped next to the app. It loads espeak-ng, which is GPL-3.0, so the helper is free software under the **GNU GPL v3 or later** ([`src-tauri/voice-helper/COPYING`](src-tauri/voice-helper/COPYING)). Its full source is in [`src-tauri/voice-helper/`](src-tauri/voice-helper/). ApexNorth starts it as its own process and only sends it text over a pipe; the two are separate programs distributed together.
+
 ## Shipped in the app
 
 | Component | Used for | License |
 |---|---|---|
-| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 1.12.9 | Runs the Piper voices | Apache-2.0 |
+| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 1.12.9 (loaded by the voice helper) | Runs the Piper voices | Apache-2.0. Source of the exact version: https://github.com/k2-fsa/sherpa-onnx/tree/v1.12.9 |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) 1.17.1 | Runs the voice model | MIT |
-| [espeak-ng](https://github.com/espeak-ng/espeak-ng) (built into sherpa-onnx) and its `espeak-ng-data` | Turns text into phonemes for the voice | GPL-3.0-or-later. Source: https://github.com/espeak-ng/espeak-ng, and the build used by sherpa-onnx: https://github.com/csukuangfj/espeak-ng |
+| [espeak-ng](https://github.com/espeak-ng/espeak-ng) (built into the sherpa-onnx library, used only by the voice helper) and its `espeak-ng-data` | Turns text into phonemes for the voice | GPL-3.0-or-later. Source: https://github.com/espeak-ng/espeak-ng, and the build used by sherpa-onnx: https://github.com/csukuangfj/espeak-ng |
 | [Piper](https://github.com/rhasspy/piper) voices (Ryan bundled; Alan, Northern English, Lessac and Amy downloadable) | The race engineer's voice | Per voice: see each voice's `MODEL_CARD` on [Hugging Face](https://huggingface.co/rhasspy/piper-voices) (copied next to the bundled voice) |
 | [Tauri](https://tauri.app), [React](https://react.dev) and the other Rust crates and npm packages in `Cargo.lock` / `package-lock.json` | App framework and libraries | Their own licenses, mostly MIT or Apache-2.0 |
 | Fonts: Inter, Saira, Chakra Petch, JetBrains Mono (via Fontsource) | UI text | SIL Open Font License 1.1 |

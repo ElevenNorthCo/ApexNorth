@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, atomic::{AtomicI16, AtomicU64, Ordering}};
 use std::time::{Duration, Instant};
 
-use super::tts::{self, Runtime, Synth};
+use super::voice_helper::VoiceHelper;
 use crate::settings::VoiceSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -95,7 +95,7 @@ impl Voice {
         std::thread::Builder::new()
             .name("voice".into())
             .spawn(move || {
-                let mut speaker = Speaker { builtin, cache_dir, synth: None };
+                let mut speaker = Speaker { builtin, cache_dir, helper: None, loaded: None };
                 // Load the voice now, so the first callout is instant.
                 if settings.enabled {
                     if let Err(e) = speaker.load(&settings) {
@@ -135,29 +135,34 @@ impl Voice {
     }
 }
 
-/// Turns text into WAV files: the built-in engine with the voice kept in
-/// memory, or an external Piper CLI when the app ships no engine.
+/// Turns text into WAV files: the bundled voice helper with the voice kept
+/// in memory, or an external Piper CLI when the app ships no helper.
 struct Speaker {
     builtin: Option<PathBuf>,
     cache_dir: PathBuf,
-    /// The loaded voice and its model path.
-    synth: Option<(String, Synth)>,
+    helper: Option<VoiceHelper>,
+    /// Model path the helper has loaded.
+    loaded: Option<String>,
 }
 
 impl Speaker {
-    /// Make sure the selected voice is loaded (built-in engine only).
+    /// Make sure the helper is running with the selected voice loaded
+    /// (bundled engine only). A helper that died is started again.
     fn load(&mut self, s: &VoiceSettings) -> Result<(), String> {
         let Some(dir) = &self.builtin else { return Ok(()) };
         if s.model_path.is_empty() {
             return Err("No voice selected. Choose a voice in Settings.".into());
         }
-        if self.synth.as_ref().is_some_and(|(m, _)| *m == s.model_path) {
+        if !self.helper.as_mut().is_some_and(|h| h.alive()) {
+            self.helper = Some(VoiceHelper::start(dir)?);
+            self.loaded = None;
+        }
+        if self.loaded.as_deref() == Some(s.model_path.as_str()) {
             return Ok(());
         }
-        self.synth = None;
-        let rt = Runtime::get(dir)?;
-        let synth = Synth::load(rt, Path::new(&s.model_path), &self.cache_dir.join("voices"))?;
-        self.synth = Some((s.model_path.clone(), synth));
+        let h = self.helper.as_mut().expect("helper running");
+        h.load(Path::new(&s.model_path), &self.cache_dir.join("voices"))?;
+        self.loaded = Some(s.model_path.clone());
         Ok(())
     }
 
@@ -174,15 +179,16 @@ impl Speaker {
             return Ok(out);
         }
         self.load(s)?;
-        let (_, synth) = self.synth.as_mut().expect("voice loaded");
-        let samples = synth.speak(text, s.length_scale)?;
-        if samples.is_empty() {
-            return Err("The voice produced no audio.".into());
-        }
-        let wav = tts::wav_bytes(&samples, synth.sample_rate);
         std::fs::create_dir_all(&self.cache_dir).map_err(|e| e.to_string())?;
         let tmp = temp_path(&out);
-        std::fs::write(&tmp, wav).map_err(|e| e.to_string())?;
+        let h = self.helper.as_mut().expect("helper running");
+        if let Err(e) = h.speak(text, s.length_scale, &tmp) {
+            let _ = std::fs::remove_file(&tmp);
+            if !h.alive() {
+                self.helper = None;
+            }
+            return Err(e);
+        }
         std::fs::rename(&tmp, &out).map_err(|e| e.to_string())?;
         Ok(out)
     }

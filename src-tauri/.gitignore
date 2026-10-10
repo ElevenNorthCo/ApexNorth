@@ -9,3 +9,4 @@
 # Built-in voice (downloaded by scripts/fetch-voice.py)
 /resources/tts/*
 !/resources/tts/README.md
+/voice-helper/target/
