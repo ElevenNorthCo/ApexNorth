@@ -4,12 +4,15 @@
 #   Release:  push a version tag   git tag v0.2.0 && git push origin v0.2.0
 #   Beta:     a tag with a dash    v0.2.0-beta.1  (marked pre-release; the
 #             in-app update notice and install scripts skip pre-releases)
-#   Test run: Actions → Release → Run workflow (builds, no release)
+#   Test run: Actions → Release → Run workflow, or push a commit whose
+#             message contains [build installers] (builds, no release;
+#             the installers are attached to the run as artifacts)
 name: Release
 
 on:
   push:
     tags: ["v*"]
+    branches: ["**"]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +25,8 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.name }}
+    # Branch pushes only build when asked to (macOS minutes are costly on a private repo).
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '[build installers]')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
