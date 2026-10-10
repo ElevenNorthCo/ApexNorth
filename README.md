@@ -338,7 +338,7 @@ Without `fetch-voice.py` the app still runs, and falls back to a `piper` program
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. A tag with a dash (`v0.2.0-beta.1`) is published as a pre-release for testers; the update button and install commands skip pre-releases. **Actions → Release → Run workflow** builds the installers without publishing them.
+About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. No terminal needed: on GitHub, open **Actions → Release → Run workflow**, type the version (`v0.2.0`) and press **Run workflow**. Leave the version empty to only build the installers (they're attached to the run). A version with a dash (`v0.2.0-beta.1`) is published as a pre-release for testers; the update button and install commands skip pre-releases.
 
 The tests cover:
 - crypto round-trips for all three packet variants
