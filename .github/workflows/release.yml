@@ -25,9 +25,10 @@ on:
 permissions:
   contents: write
 
+# One build per commit at a time; a later push never cancels a build in progress.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.sha }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
