@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { clock } from "../lib/format";
+import { checkForUpdate, type Update } from "../lib/updates";
 import { useStore, type View } from "../lib/store";
 import { Brand } from "./Brand";
 import { Cog } from "./icons";
@@ -20,6 +22,12 @@ export function TopBar() {
   useEffect(() => {
     const id = setInterval(() => setNow(clock()), 5000);
     return () => clearInterval(id);
+  }, []);
+  // Once per launch, a few seconds in: is there a newer release on GitHub?
+  const [update, setUpdate] = useState<Update | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => checkForUpdate().then(setUpdate), 4000);
+    return () => clearTimeout(t);
   }, []);
 
   const [text, color] =
@@ -60,6 +68,15 @@ export function TopBar() {
       </nav>
 
       <div className="ml-auto flex items-center gap-6 pr-3">
+        {update && (
+          <button
+            onClick={() => openUrl(update.url)}
+            title="A new version of ApexNorth is out. Opens the download page."
+            className="tech rounded-full border border-accent/70 bg-accent/10 px-3 py-1 text-[12px] font-semibold text-accent shadow-[0_0_10px_rgba(57,255,122,0.35)] hover:bg-accent/20"
+          >
+            Update v{update.version}
+          </button>
+        )}
         <div className="h-full w-px skew-x-[-20deg] bg-accent/30" />
         <button onClick={() => go({ name: "connect" })} className="num flex items-center gap-2 text-[14px] font-bold" style={{ color }} title={status.ip ?? "Connect"}>
           <span className={`h-[9px] w-[9px] rounded-full ${status.state === "live" && !paused ? "pulse-dot" : ""}`} style={{ background: color }} />

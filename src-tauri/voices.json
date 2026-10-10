@@ -1,0 +1,11 @@
+{
+  "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0",
+  "bundled": "en_US-ryan-high",
+  "voices": [
+    { "id": "en_US-ryan-high", "name": "Ryan", "accent": "American", "path": "en/en_US/ryan/high", "sizeMb": 116 },
+    { "id": "en_GB-alan-medium", "name": "Alan", "accent": "British", "path": "en/en_GB/alan/medium", "sizeMb": 61 },
+    { "id": "en_GB-northern_english_male-medium", "name": "Northern", "accent": "Northern English", "path": "en/en_GB/northern_english_male/medium", "sizeMb": 61 },
+    { "id": "en_US-lessac-medium", "name": "Lessac", "accent": "American", "path": "en/en_US/lessac/medium", "sizeMb": 61 },
+    { "id": "en_US-amy-medium", "name": "Amy", "accent": "American", "path": "en/en_US/amy/medium", "sizeMb": 61 }
+  ]
+}

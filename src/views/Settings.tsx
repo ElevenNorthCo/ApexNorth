@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type Callouts, type ChatterLevel, type Settings } from "../lib/api";
+import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
+import { api, type CatalogVoice, type Callouts, type ChatterLevel, type Settings, type VoiceDownload } from "../lib/api";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
@@ -31,13 +33,25 @@ export function SettingsView() {
   const setSettings = useStore((s) => s.setSettings);
   const [voices, setVoices] = useState<string[]>([]);
   const [voicesDir, setVoicesDir] = useState("");
+  const [builtin, setBuiltin] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogVoice[]>([]);
+  const [download, setDownload] = useState<VoiceDownload | null>(null);
+  const [version, setVersion] = useState("");
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  useEffect(() => {
+  const loadVoices = () => {
     api.listVoices().then(setVoices);
+    api.voiceCatalog().then(setCatalog);
+  };
+  useEffect(loadVoices, [settings?.voice.modelPath]);
+  useEffect(() => {
     api.voicesDir().then(setVoicesDir);
-  }, [settings?.voice.modelPath]);
+    api.voiceBuiltin().then(setBuiltin);
+    getVersion().then(setVersion);
+    const off = listen<VoiceDownload>("voice_download", (e) => setDownload(e.payload));
+    return () => void off.then((f) => f());
+  }, []);
 
   if (!settings) return null;
 
@@ -75,8 +89,28 @@ export function SettingsView() {
     }
   };
 
+  const getVoice = async (c: CatalogVoice) => {
+    setMessage(null);
+    setDownload({ id: c.id, received: 0, total: null });
+    try {
+      const path = await api.downloadVoice(c.id);
+      loadVoices();
+      update((s) => void (s.voice.modelPath = path));
+      setMessage({ ok: true, text: `${c.name} is ready. Try the test button.` });
+    } catch (e) {
+      setMessage({ ok: false, text: String(e) });
+    } finally {
+      setDownload(null);
+    }
+  };
+
   const v = settings.voice;
-  const name = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.onnx$/, "") ?? p;
+  const file = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.onnx$/, "") ?? p;
+  const name = (p: string) => {
+    const c = catalog.find((c) => c.id === file(p));
+    return c ? `${c.name} (${c.accent})` : file(p);
+  };
+  const more = catalog.filter((c) => !c.path);
 
   return (
     <div className="scroll-thin h-full overflow-y-auto pb-16">
@@ -111,12 +145,14 @@ export function SettingsView() {
         </Section>
 
         <Section title="Race engineer voice" color="var(--color-thr)">
-          <Row label="Voice callouts" hint="Spoken with Piper, fully offline">
+          <Row label="Voice callouts" hint={builtin ? "Built-in Piper voice, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}>
             <Toggle checked={v.enabled} onChange={(c) => update((s) => void (s.voice.enabled = c))} />
           </Row>
-          <Row label="Piper program" hint={v.piperPath || "Not found"}>
-            <Btn onClick={() => browse("piper")}>Choose…</Btn>
-          </Row>
+          {!builtin && (
+            <Row label="Piper program" hint={v.piperPath || "Not found"}>
+              <Btn onClick={() => browse("piper")}>Choose…</Btn>
+            </Row>
+          )}
           <Row label="Voice" hint={v.modelPath ? v.modelPath : `Put .onnx voices in ${voicesDir}`}>
             <div className="flex items-center gap-2">
               {voices.length > 0 && (
@@ -136,6 +172,31 @@ export function SettingsView() {
               <Btn onClick={() => browse("model")}>Browse…</Btn>
             </div>
           </Row>
+          {more.length > 0 && (
+            <div className="py-3.5">
+              <div className="text-[15px] font-medium">More voices</div>
+              <div className="text-[12px] text-white/45">Free Piper voices, downloaded once and then used offline</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {more.map((c) => {
+                  const busy = download?.id === c.id;
+                  const pct = busy && download?.total ? Math.round((download.received / download.total) * 100) : null;
+                  return (
+                    <div key={c.id} className="flex items-center justify-between gap-3 rounded-[10px] border border-white/10 bg-black/40 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="text-[14px]">{c.name}</div>
+                        <div className="text-[12px] text-white/45">
+                          {c.accent} · {c.sizeMb} MB
+                        </div>
+                      </div>
+                      <Btn onClick={() => getVoice(c)} disabled={download != null}>
+                        {busy ? (pct != null ? `${pct}%` : "Starting…") : "Download"}
+                      </Btn>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <Row label="Volume">
             <Slider value={v.volume} min={0} max={1} step={0.05} onChange={(x) => update((s) => void (s.voice.volume = x))} />
           </Row>
@@ -189,7 +250,9 @@ export function SettingsView() {
 
         <div className="mt-10 flex flex-col items-center gap-2 opacity-60">
           <Brand scale={0.6} />
-          <p className="tech text-[11px] text-white/50">Eleven North · GT7 telemetry over UDP 33739/33740</p>
+          <p className="tech text-[11px] text-white/50">
+            {version && `v${version} · `}Eleven North · GT7 telemetry over UDP 33739/33740
+          </p>
         </div>
       </div>
     </div>

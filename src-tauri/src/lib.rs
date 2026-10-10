@@ -4,18 +4,19 @@ mod session;
 mod settings;
 mod storage;
 mod telemetry;
+mod voices;
 
 use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use engineer::director::EngineerConfig;
 use engineer::rules::Engineer;
-use engineer::voice::{self, Callout, Priority, Voice};
+use engineer::voice::{Callout, Priority, Voice};
 use session::engine::{Engine, EngineEvent, RefLap};
 use settings::Settings;
 use storage::{Db, LapDetail, LapSummary, SessionSummary};
@@ -30,7 +31,8 @@ struct AppState {
     settings: Arc<RwLock<Settings>>,
     settings_path: PathBuf,
     voices_dir: PathBuf,
-    voice_cache: PathBuf,
+    /// Bundled voice engine (`lib/`, `espeak-ng-data/`, `voices/`), when present.
+    builtin_tts: Option<PathBuf>,
     voice: Voice,
     status: Arc<Mutex<ConnStatus>>,
     link: Mutex<Option<Link>>,
@@ -382,6 +384,7 @@ fn save_settings(state: State<AppState>, settings: Settings) -> Result<(), Strin
 #[tauri::command]
 fn list_voices(state: State<AppState>) -> Vec<String> {
     let mut dirs = vec![state.voices_dir.clone()];
+    dirs.extend(state.builtin_tts.as_ref().map(|d| d.join("voices")));
     let current = state.settings.read().voice.model_path.clone();
     if let Some(dir) = PathBuf::from(&current).parent() {
         dirs.push(dir.to_path_buf());
@@ -396,14 +399,36 @@ fn voices_dir(state: State<AppState>) -> String {
 
 #[tauri::command]
 async fn test_voice(state: State<'_, AppState>, text: String) -> Result<(), String> {
-    let cfg = state.settings.read().voice.clone();
-    let cache = state.voice_cache.clone();
+    let v = state.voice.clone();
     let t = text.clone();
-    tauri::async_runtime::spawn_blocking(move || voice::synthesize(&cfg, &cache, &t))
-        .await
-        .map_err(|e| e.to_string())??;
+    tauri::async_runtime::spawn_blocking(move || v.render(t)).await.map_err(|e| e.to_string())??;
     state.voice.say(Callout::new(Priority::High, text));
     Ok(())
+}
+
+/// Whether the app ships its own voice engine (no Piper install needed).
+#[tauri::command]
+fn voice_builtin(state: State<AppState>) -> bool {
+    state.builtin_tts.is_some()
+}
+
+#[tauri::command]
+fn voice_catalog(state: State<AppState>) -> Vec<voices::CatalogVoice> {
+    voices::catalog(&state.voices_dir, state.builtin_tts.as_deref())
+}
+
+/// Download a catalog voice into the voices folder; returns its model path.
+/// Progress arrives as "voice_download" events.
+#[tauri::command]
+async fn download_voice(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, String> {
+    let dir = state.voices_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        voices::download(&id, &dir, |received, total| {
+            let _ = app.emit("voice_download", voices::Progress { id: id.clone(), received, total });
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -438,9 +463,19 @@ pub fn run() {
                     settings.voice.model_path = v;
                 }
             }
+            let builtin_tts = voices::builtin_dir(app.path().resource_dir().ok());
+            log::info!("voice engine: {}", builtin_tts.as_ref().map_or("external Piper".into(), |d| d.display().to_string()));
+            if let Some(dir) = &builtin_tts {
+                // A missing voice (or none chosen yet) falls back to the bundled one.
+                if !Path::new(&settings.voice.model_path).is_file() {
+                    if let Some(v) = voices::bundled_voice(dir) {
+                        settings.voice.model_path = v;
+                    }
+                }
+            }
             let voice_cache = cache.join("voice");
             let handle = app.handle().clone();
-            let voice = Voice::start(settings.voice.clone(), voice_cache.clone(), move |e| {
+            let voice = Voice::start(settings.voice.clone(), builtin_tts.clone(), voice_cache, move |e| {
                 let _ = handle.emit("voice_error", e);
             });
             let auto_ip = settings.auto_connect.then(|| settings.last_ip.clone()).flatten();
@@ -465,7 +500,7 @@ pub fn run() {
                 settings: Arc::new(RwLock::new(settings)),
                 settings_path,
                 voices_dir,
-                voice_cache,
+                builtin_tts,
                 voice,
                 status: Arc::new(Mutex::new(ConnStatus::idle())),
                 link: Mutex::new(None),
@@ -493,6 +528,9 @@ pub fn run() {
             delete_session,
             set_session_kind,
             set_session_conditions,
+            voice_builtin,
+            voice_catalog,
+            download_voice,
             rename_track,
             track_catalog,
             get_settings,

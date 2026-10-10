@@ -227,4 +227,26 @@ export const api = {
   listVoices: () => invoke<string[]>("list_voices"),
   voicesDir: () => invoke<string>("voices_dir"),
   testVoice: (text: string) => invoke<void>("test_voice", { text }),
+  /** True when the app ships its own voice engine (no Piper install needed). */
+  voiceBuiltin: () => invoke<boolean>("voice_builtin"),
+  voiceCatalog: () => invoke<CatalogVoice[]>("voice_catalog"),
+  /** Downloads a catalog voice; progress arrives as "voice_download" events. Returns the model path. */
+  downloadVoice: (id: string) => invoke<string>("download_voice", { id }),
 };
+
+/** A Piper voice from the built-in catalog (`src-tauri/voices.json`). */
+export interface CatalogVoice {
+  id: string;
+  name: string;
+  accent: string;
+  sizeMb: number;
+  bundled: boolean;
+  /** Model path once it's on disk. */
+  path: string | null;
+}
+
+export interface VoiceDownload {
+  id: string;
+  received: number;
+  total: number | null;
+}

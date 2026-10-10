@@ -7,6 +7,7 @@ The README has the full feature list, the protocol details, and the **phase road
 ## Commands
 
 ```bash
+python3 scripts/fetch-voice.py    # once: built-in voice into src-tauri/resources/tts (git-ignored)
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
 cd src-tauri && cargo test        # Rust unit tests (fast, ~64 tests)
 npx tsc --noEmit                  # type-check the frontend
@@ -48,7 +49,9 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
          └ catalog/       built-in GT7 data: cars.rs (car_code → name), tracks.rs (121 layouts, lap → layout)
        engineer/rules.rs  → candidate Calls (+ live.rs: tyre temps, wheel slip)
          → director.rs    chatter level, category toggle, anti-nag cooldown, routine gap, calm-moment hold
-         → voice.rs       priority queue (High clears Low) → piper CLI → cached WAV → rodio
+         → voice.rs       priority queue (High clears Low) → Speaker → cached WAV → rodio
+             └ tts.rs     built-in Piper: sherpa-onnx C API via libloading, voice kept loaded
+                          (falls back to an external piper CLI when resources/tts is empty)
        emits Tauri events: "telemetry" (LiveState, 30 Hz), "connection", "lap", "lap_invalid", "engineer", "voice_error"
 ```
 
@@ -114,6 +117,13 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Orientation hasn't been checked against a real track yet. If it looks mirrored, flip one axis there and in `TrackOutline.tsx`.
 - Don't use `window.alert` or `window.confirm`. Use inline confirms instead (see delete session in `views/Session.tsx`).
 
+## Built-in voice & releases
+- `engineer/tts.rs` loads sherpa-onnx **1.12.9** (`#[repr(C)]` structs must match that version's `c-api.h`; the npm packages `sherpa-onnx-<platform>@1.12.9` carry the libraries). Piper voices (`.onnx` + `.onnx.json`) are prepared once into the cache: metadata appended to the ONNX protobuf (field 14) and `tokens.txt` from the phoneme map (single-character tokens only: sherpa calls `exit()` on a bad token file, so validate before `SherpaOnnxCreateOfflineTts`).
+- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`lib/`, `espeak-ng-data/`, `voices/en_US-ryan-high`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
+- `src-tauri/voices.json` is the voice catalog (bundled + 4 downloadable from HuggingFace `rhasspy/piper-voices` v1.0.0), read by Rust and the fetch script.
+- `.github/workflows/release.yml`: tag `v*` → 4 installers with fixed names (`ApexNorth-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-Setup.exe`, `-Linux.AppImage`/`.deb`), voice smoke test (`speaks_with_the_bundled_voice`, ignored locally) on mac arm64, Windows, Linux, then a GitHub Release. Dash tags are pre-releases. `install.sh` / `install.ps1` download `releases/latest/download/<fixed name>`; `lib/updates.ts` shows the TopBar **Update** button from `releases/latest`. All of these need the repo to be public.
+- macOS builds are ad-hoc signed (`signingIdentity: "-"`, `hardenedRuntime: false` so the bundled dylibs load).
+
 ## README screenshots
 - `docs/screenshots/*.jpg` (dashboard, activity, session, lap-analysis) were taken from the Vite frontend in headless Chrome, with a mocked Tauri backend serving real sessions dumped from the user's DB, and a real Fuji SF19 race (session 22) as the showcase: lap 15 against lap 14 as a staged live frame. Drive it over CDP: inject a fake `__TAURI_INTERNALS__` (invoke + transformCallback, emit events by calling the stored listener callbacks) and switch views with `import('/src/lib/store.ts')`. Snapshot the DB with `sqlite3 "file:...apexnorth.db?mode=ro" ".backup copy.db"` (a plain copy misses the WAL), dump it through `storage::Db` with a temporary ignored test, and serve it to the mock. Last retaken 2026-10-09 at 1600×900, 1.5× scale. Retake them when the UI changes noticeably.
 
@@ -130,7 +140,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 ## User environment
 - The user's PS5 is at 192.168.12.194, saved in settings as `lastIp`. They test live on the PS5.
 - Piper:
-  - The CLI is `~/.local/bin/piper` (Python, pipx). It takes about 2.5 s per new phrase.
+  - The CLI is `~/.local/bin/piper` (Python, pipx), only used when the built-in voice isn't fetched. It takes about 2.5 s per new phrase.
   - Voices are in `~/Projects/ElevenNorth/PiperTest/models` (`en_US-ryan-high` is selected).
 - App data is in `~/Library/Application Support/com.elevennorth.apexnorth/` (`apexnorth.db`, `settings.json`, `voices/`).
 

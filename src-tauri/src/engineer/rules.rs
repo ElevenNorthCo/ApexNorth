@@ -419,7 +419,14 @@ impl Engineer {
                 (true, 1) => " One stop expected.".into(),
                 (true, n) => format!(" {n} stops expected."),
             };
-            out.push(Call::new(Topic::Fuel, Normal, Priority::Normal, "fuel.estimate", format!("Fuel usage is {pct} percent per lap.{stops}")));
+            // Fuel for how many laps matters more than the percentage, but
+            // a stop-free race already says it all.
+            let tank = if s.stops_required > 0 || !lap_limited {
+                format!(" That's {} of fuel in the tank.", speak_laps(s.fuel_laps_remaining))
+            } else {
+                String::new()
+            };
+            out.push(Call::new(Topic::Fuel, Normal, Priority::Normal, "fuel.estimate", format!("Fuel usage is {pct} percent per lap.{tank}{stops}")));
             return out;
         }
         let needs_stop = s.stops_required > 0 || !lap_limited;
@@ -866,7 +873,7 @@ mod tests {
         let t = Instant::now();
         let mut e = Engineer::new();
         let got = say(&mut e, &[EngineEvent::LapCompleted(Box::new(lap(2, 90_500)), ctx(3, 12, 78.0, &[9.8]))], &cfg(Normal), t);
-        assert!(got.contains(&"Fuel usage is 9.8 percent per lap. One stop expected.".to_string()), "{got:?}");
+        assert!(got.contains(&"Fuel usage is 9.8 percent per lap. That's about 8 laps of fuel in the tank. One stop expected.".to_string()), "{got:?}");
         assert!(got.iter().any(|s| s.starts_with("Pit window laps 3 to 9. Lap 8 is the target.")), "{got:?}");
     }
 

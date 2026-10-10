@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> &middot;
+  <a href="#install">Install</a> &middot;
   <a href="#features">Features</a> &middot;
   <a href="#connecting-to-your-playstation">Connect</a> &middot;
-  <a href="#race-engineer-voice-piper">Voice</a> &middot;
+  <a href="#race-engineer-voice">Voice</a> &middot;
   <a href="#roadmap-phases--milestones">Roadmap</a> &middot;
   <a href="#development">Development</a>
 </p>
@@ -39,7 +39,7 @@ ApexNorth connects to your PlayStation over Wi-Fi and turns Gran Turismo 7's tel
 | **Drive** | A real-time dashboard with shift lights, live delta to your best lap, tyre temperatures, fuel and pit strategy. |
 | **Record** | Every lap is saved at 30 Hz with five sector splits. Tracks and cars are named automatically. |
 | **Analyse** | Replay any lap on a track map and compare it against any other lap, with synced speed, throttle, brake and gear traces. |
-| **Listen** | An offline voice engineer ([Piper](https://github.com/rhasspy/piper)) calls lap times, sectors, fuel, the pit window, tyres and race position. |
+| **Listen** | A built-in offline voice engineer ([Piper](https://github.com/rhasspy/piper) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. |
 
 The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster. See the [roadmap](#roadmap-phases--milestones).
 
@@ -59,29 +59,52 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ---
 
-## Quick start
+## Install
 
-### Prerequisites
-- [Rust](https://rustup.rs) (stable)
-- [Node.js](https://nodejs.org) 20+
-- Tauri system dependencies for your OS. See the [Tauri prerequisites](https://tauri.app/start/prerequisites/).
-- Optional, for voice: [Piper TTS](https://github.com/rhasspy/piper) and a voice model (`.onnx` plus `.onnx.json`).
+ApexNorth is free. Pick **one** of these. Both get the same app, with the race engineer's voice built in.
 
-### Run
+### Option 1: one command (easiest)
+
+**Mac:** open **Terminal** (press `⌘ Space`, type *Terminal*, press Enter), paste this line and press Enter:
+
 ```bash
-git clone https://github.com/ElevenNorthCo/ApexNorth.git
-cd ApexNorth
-npm install
-npm run tauri dev
+curl -fsSL https://raw.githubusercontent.com/ElevenNorthCo/ApexNorth/main/install.sh | bash
 ```
 
-No PlayStation handy? On the Connect screen choose **Try demo mode**. A built-in simulator drives a 10-lap race (grid start, fuel burn, tyre wear, a pit stop and a spin) so you can see the dashboard, recording, lap analysis and voice engineer working end to end.
+**Windows:** open **PowerShell** (press the Windows key, type *PowerShell*, press Enter), paste this line and press Enter:
 
-### Build an installer
-```bash
-npm run tauri build
+```powershell
+irm https://raw.githubusercontent.com/ElevenNorthCo/ApexNorth/main/install.ps1 | iex
 ```
-The output goes to `src-tauri/target/release/bundle/`: `.app`/`.dmg` on macOS, `.msi`/`.exe` on Windows, and `.deb`/`.AppImage`/`.rpm` on Linux.
+
+**Linux:** same as Mac, in a terminal.
+
+It downloads the latest version, installs it and opens it. To update later, run the same line again.
+
+### Option 2: download the installer
+
+Go to the [**latest release**](https://github.com/ElevenNorthCo/ApexNorth/releases/latest) and download the file for your computer:
+
+| Computer | File |
+|---|---|
+| Mac with Apple Silicon (M1, M2, M3, M4…) | `ApexNorth-macOS-AppleSilicon.dmg` |
+| Mac with an Intel chip | `ApexNorth-macOS-Intel.dmg` |
+| Windows 10 or 11 | `ApexNorth-Windows-Setup.exe` |
+| Linux | `ApexNorth-Linux.AppImage` or `ApexNorth-Linux.deb` |
+
+Not sure which Mac you have? Click the Apple menu → **About This Mac**. "Chip: Apple M…" means Apple Silicon. "Processor: Intel" means Intel.
+
+- **Mac:** open the `.dmg` and drag **ApexNorth** into **Applications**. The first time you open it, macOS says it can't check the app, because ApexNorth isn't registered with Apple (that costs $99 a year). Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only do this once. The one-command install skips this step.
+- **Windows:** run the setup file. If a blue *Windows protected your PC* box appears, click **More info → Run anyway**.
+- **Firewall:** the first time ApexNorth connects, Windows Firewall (or macOS) may ask to allow it on the network. Say **Allow**, or it can't hear your PlayStation.
+
+### Updates
+
+When a new version is out, an **Update** button appears in the top bar. Click it to open the download page, or run the install command again.
+
+### Then
+
+Start GT7, get on track, and click **Find my PlayStation** in ApexNorth. No PlayStation handy? Choose **Try demo mode** on the Connect screen to watch a simulated race.
 
 ---
 
@@ -100,19 +123,16 @@ If it can't find the console:
 
 ---
 
-## Race engineer voice (Piper)
+## Race engineer voice
 
-ApexNorth calls the `piper` command-line program. It finds Piper on your `PATH` and in `~/.local/bin`.
+The voice is built in: ApexNorth ships the Piper voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) and the **Ryan** voice, so callouts work straight after installing. The voice stays loaded in memory, so a new phrase takes a fraction of a second, and repeated callouts play instantly from a cache.
 
-```bash
-pipx install piper-tts   # or download a release binary
-```
+In **Settings → Race engineer voice**:
+- **More voices:** download Alan (British), Northern English, Lessac or Amy with one click. They're fetched once from [Piper voices](https://huggingface.co/rhasspy/piper-voices) and then work offline.
+- **Your own voice:** any Piper voice works. Choose its `.onnx` file with **Browse…** (its `.onnx.json` must sit next to it), or drop both into the app's `voices` folder.
+- Press **Test voice** to hear it.
 
-1. Download a voice from [Piper voices](https://huggingface.co/rhasspy/piper-voices). You need both the `.onnx` file and its `.onnx.json` file. `en_US-ryan-high` makes a good race engineer.
-2. In **Settings → Race engineer voice**, choose the voice with **Browse…**, or drop it into the app's `voices` folder.
-3. Press **Test voice**.
-
-Generated audio is cached, so repeated callouts play instantly. If the voice can't play, the dashboard shows a red **Voice off** line explaining why.
+If the voice can't play, the dashboard shows a red **Voice off** line explaining why.
 
 ---
 
@@ -162,7 +182,7 @@ Generated audio is cached, so repeated callouts play instantly. If the voice can
 - Sector filter (All, or S1–S5) zooms both the charts and the map.
 
 ### Race engineer voice
-Callouts are spoken offline with Piper. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
+Callouts are spoken offline with the built-in Piper voice. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
 
 Set your name in **Settings** and the engineer uses it ("Good luck out there, Michael.").
 
@@ -211,7 +231,7 @@ PS5/PS4 ──UDP 33740──▶ telemetry/udp.rs   heartbeat + discovery + rece
                          ├─▶ storage (SQLite + zstd lap blobs) ◀─ Activity / Lap Analysis
                          └─▶ engineer/rules.rs   what to say (structured calls)
                                └─ director.rs    chatter level, toggles, anti-nag, timing
-                                    └─ voice.rs  Piper CLI → WAV cache → rodio
+                                    └─ voice.rs  Piper voice (tts.rs, in-process) → WAV cache → rodio
 ```
 
 - All the heavy work happens in Rust: decrypting, lap logic, recording and callouts. The UI only renders.
@@ -255,7 +275,8 @@ The field offsets are documented in [`src-tauri/src/telemetry/packet.rs`](src-ta
 ```
 src-tauri/src/
   lib.rs                 app setup, live packet handler, Tauri commands
-  settings.rs            settings, Piper / voice discovery
+  settings.rs            settings, voice discovery
+  voices.rs              bundled voice, downloadable voice catalog (voices.json)
   telemetry/
     crypto.rs            Salsa20 encrypt/decrypt, packet variants
     packet.rs            GT7 packet parser (+ serializer for the simulator)
@@ -277,7 +298,8 @@ src-tauri/src/
     live.rs              tyre temperature and wheel-slip watchers
     director.rs          chatter level, toggles, anti-nag, context timing
     phrases.rs           phrase variation, spoken numbers
-    voice.rs             Piper synthesis, WAV cache, playback queue
+    tts.rs               built-in Piper voice: sherpa-onnx loaded at runtime, voice kept in memory
+    voice.rs             synthesis, WAV cache, playback queue
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
   components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, Art, Flag, icons
@@ -291,11 +313,30 @@ src/
 
 ## Development
 
+You need [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) 20+, Python 3, and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+
 ```bash
-npm run tauri dev           # app with hot reload
-cd src-tauri && cargo test  # Rust unit tests
-npx tsc --noEmit            # type-check the frontend
+git clone https://github.com/ElevenNorthCo/ApexNorth.git
+cd ApexNorth
+npm install
+python3 scripts/fetch-voice.py   # built-in voice: engine, espeak-ng data, Ryan (~150 MB, once)
+npm run tauri dev                # app with hot reload
+cd src-tauri && cargo test       # Rust unit tests
+npx tsc --noEmit                 # type-check the frontend
+npm run tauri build              # installer → src-tauri/target/release/bundle/
 ```
+
+Without `fetch-voice.py` the app still runs, and falls back to a `piper` program on your `PATH` (`pipx install piper-tts`) for the voice.
+
+### Releases
+
+[GitHub Actions](.github/workflows/release.yml) builds the installers for macOS (Apple Silicon and Intel), Windows and Linux, with the built-in voice. Before building, it checks on each OS that the bundled voice actually speaks. To publish a release:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. A tag with a dash (`v0.2.0-beta.1`) is published as a pre-release for testers; the update button and install commands skip pre-releases. **Actions → Release → Run workflow** builds the installers without publishing them.
 
 The tests cover:
 - crypto round-trips for all three packet variants
@@ -382,14 +423,17 @@ The tests cover:
 </details>
 
 ### 🔜 Phase 4: Polish & distribution
-- [ ] Keep Piper loaded in the background so new callouts are near-instant (currently about 2.5 s for an uncached phrase)
-- [ ] Bundle Piper and a default voice as a Tauri sidecar
+- [x] Piper voice engine built in (sherpa-onnx, loaded in-process) with the Ryan voice bundled: no Piper install, works straight after installing
+- [x] Voice kept loaded in memory, so new callouts are near-instant (was about 2.5 s for an uncached phrase)
+- [x] Four more voices (Alan, Northern English, Lessac, Amy) downloadable with one click in Settings
 - [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars (verified live on PS5, 2026-10-03)
 - [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch (verified live on PS5, 2026-10-03)
 - [ ] Track database extras: real outlines and track-specific sectors
 - [ ] Multiple dashboard layouts, plus speed/G-force/steering widgets
 - [ ] Pre-race strategy briefing (fuel needed, planned stops)
-- [ ] GitHub Actions builds for macOS, Windows and Linux, plus auto-update
+- [x] GitHub Actions builds installers for macOS (Apple Silicon + Intel), Windows and Linux, with a voice test on each OS
+- [x] One-line install commands (`install.sh`, `install.ps1`) and an in-app **Update** button when a new release is out
+- [ ] Signed auto-update (download and install inside the app), and Apple/Windows code signing
 - [x] App icon and branding
 
 ### 🔮 Phase 5: AI coach
@@ -417,13 +461,13 @@ The tests cover:
 - **Performance points (PP):** GT7 doesn't send PP or tuning data, so it can't be shown per session.
 - **Tyre wear:** GT7 sends no tyre wear data. Degradation is estimated from the lap-time trend and stated with honest language, never as a percentage.
 - **Pit entry:** track layouts differ and GT7 doesn't say where the pit lane is, so the "box this lap" reminder comes at about 75–90% of the lap.
-- **Voice latency:** the Python Piper CLI loads the model for each new phrase. This will be fixed in Phase 4.
+- **Unsigned app:** ApexNorth isn't signed with an Apple or Microsoft certificate yet, so the first launch of a browser download needs **Open Anyway** (Mac) or **Run anyway** (Windows). The install commands avoid that.
 
 ---
 
 ## Credits
 - Protocol research: [Nenkai/PDTools](https://github.com/Nenkai/PDTools), [Bornhall/gt7telemetry](https://github.com/Bornhall/gt7telemetry), and the [GTPlanet telemetry thread](https://www.gtplanet.net/forum/threads/overview-of-gt7-telemetry-software.418011/).
-- Voice: [Piper](https://github.com/rhasspy/piper).
+- Voice: [Piper](https://github.com/rhasspy/piper) voices, run with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0), [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT) and [espeak-ng](https://github.com/espeak-ng/espeak-ng) (GPL-3.0). Each voice's model card lists its dataset and license.
 - Car list: [ddm999/gt7info](https://github.com/ddm999/gt7info) (MIT-0).
 - Track catalog and reference lines: [jbhoorasingh/gt7-datalogger-track-data](https://github.com/jbhoorasingh/gt7-datalogger-track-data) (CC0), built on captures from [zetetos/gt-telemetry](https://github.com/zetetos/gt-telemetry) (MIT). Test laps from [vthinsel/GT7Tracks](https://github.com/vthinsel/GT7Tracks) (MIT).
 

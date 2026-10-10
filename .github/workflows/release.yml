@@ -1,0 +1,146 @@
+# Builds the installers with the built-in voice, checks the voice actually
+# speaks on each OS, and publishes a GitHub Release.
+#
+#   Release:  push a version tag   git tag v0.2.0 && git push origin v0.2.0
+#   Beta:     a tag with a dash    v0.2.0-beta.1  (marked pre-release; the
+#             in-app update notice and install scripts skip pre-releases)
+#   Test run: Actions → Release → Run workflow (builds, no release)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-AppleSilicon
+            os: macos-14
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+            voice_test: true
+          - name: macOS-Intel
+            os: macos-14
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+            voice_test: false # cross-built on Apple Silicon, can't run here
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            voice_test: true
+          - name: Linux
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            voice_test: true
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libasound2-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - run: npm ci
+
+      - name: Download the built-in voice (engine, espeak-ng data, voice)
+        run: python scripts/fetch-voice.py --target ${{ matrix.target }}
+
+      - name: Check the downloadable voices exist
+        if: runner.os == 'Linux'
+        run: python scripts/fetch-voice.py --check-catalog
+
+      - name: Voice test (the bundled voice speaks)
+        if: matrix.voice_test
+        working-directory: src-tauri
+        run: cargo test --target ${{ matrix.target }} speaks_with_the_bundled_voice -- --ignored --nocapture
+
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          fi
+          # Installers want plain x.y.z; a beta suffix only goes on the release.
+          echo "app=${v%%-*}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${v%%-*}"
+
+      - name: Build
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config '{"version":"${{ steps.version.outputs.app }}"}'
+
+      - name: Collect installers
+        run: |
+          b=src-tauri/target/${{ matrix.target }}/release/bundle
+          mkdir -p out
+          case "${{ matrix.name }}" in
+            macOS-*) cp "$(ls $b/dmg/*.dmg | head -1)" "out/ApexNorth-${{ matrix.name }}.dmg" ;;
+            Windows) cp "$(ls $b/nsis/*-setup.exe | head -1)" "out/ApexNorth-Windows-Setup.exe" ;;
+            Linux)
+              cp "$(ls $b/appimage/*.AppImage | head -1)" "out/ApexNorth-Linux.AppImage"
+              cp "$(ls $b/deb/*.deb | head -1)" "out/ApexNorth-Linux.deb" ;;
+          esac
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ApexNorth-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ApexNorth ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body_path: .github/release-notes.md
+          files: out/*

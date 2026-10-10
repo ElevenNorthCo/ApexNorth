@@ -1,5 +1,6 @@
-//! Speech output: Piper CLI → cached WAV → rodio playback, on one worker
-//! thread with a small priority queue that drops stale messages.
+//! Speech output: Piper voice (the built-in engine, or an external Piper CLI)
+//! → cached WAV → rodio playback, on one worker thread with a small priority
+//! queue that drops stale messages.
 
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::hash_map::DefaultHasher;
@@ -10,6 +11,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, atomic::{AtomicI16, AtomicU64, Ordering}};
 use std::time::{Duration, Instant};
 
+use super::tts::{self, Runtime, Synth};
 use crate::settings::VoiceSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -52,6 +54,8 @@ impl Callout {
 enum Msg {
     Say(Callout),
     Configure(VoiceSettings),
+    /// Render a phrase (for a preview) and report whether it worked.
+    Render(String, Sender<Result<(), String>>),
 }
 
 #[derive(Clone)]
@@ -82,15 +86,33 @@ impl Context {
 
 impl Voice {
     /// `on_error` is called when a callout cannot be spoken, so the UI can say why.
-    pub fn start(settings: VoiceSettings, cache_dir: PathBuf, on_error: impl Fn(String) + Send + 'static) -> Voice {
+    /// `builtin` is the bundled voice engine folder (`lib/`, `espeak-ng-data/`),
+    /// when the app ships one.
+    pub fn start(settings: VoiceSettings, builtin: Option<PathBuf>, cache_dir: PathBuf, on_error: impl Fn(String) + Send + 'static) -> Voice {
         let (tx, rx) = crossbeam_channel::unbounded();
         let context = Arc::new(Context::default());
         let worker_context = context.clone();
         std::thread::Builder::new()
             .name("voice".into())
-            .spawn(move || worker(rx, settings, cache_dir, worker_context, on_error))
+            .spawn(move || {
+                let mut speaker = Speaker { builtin, cache_dir, synth: None };
+                // Load the voice now, so the first callout is instant.
+                if settings.enabled {
+                    if let Err(e) = speaker.load(&settings) {
+                        log::warn!("voice: {e}");
+                    }
+                }
+                worker(rx, settings, speaker, worker_context, on_error)
+            })
             .expect("spawn voice thread");
         Voice { tx, context }
+    }
+
+    /// Render `text` with the current voice, so a preview can report errors.
+    pub fn render(&self, text: String) -> Result<(), String> {
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        self.tx.send(Msg::Render(text, tx)).map_err(|_| "Voice engine stopped.".to_string())?;
+        rx.recv_timeout(Duration::from_secs(60)).map_err(|_| "The voice took too long to respond.".to_string())?
     }
 
     pub fn say(&self, mut c: Callout) {
@@ -113,24 +135,84 @@ impl Voice {
     }
 }
 
-/// Render `text` to a WAV file with Piper, reusing a cached file when possible.
-pub fn synthesize(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<PathBuf, String> {
+/// Turns text into WAV files: the built-in engine with the voice kept in
+/// memory, or an external Piper CLI when the app ships no engine.
+struct Speaker {
+    builtin: Option<PathBuf>,
+    cache_dir: PathBuf,
+    /// The loaded voice and its model path.
+    synth: Option<(String, Synth)>,
+}
+
+impl Speaker {
+    /// Make sure the selected voice is loaded (built-in engine only).
+    fn load(&mut self, s: &VoiceSettings) -> Result<(), String> {
+        let Some(dir) = &self.builtin else { return Ok(()) };
+        if s.model_path.is_empty() {
+            return Err("No voice selected. Choose a voice in Settings.".into());
+        }
+        if self.synth.as_ref().is_some_and(|(m, _)| *m == s.model_path) {
+            return Ok(());
+        }
+        self.synth = None;
+        let rt = Runtime::get(dir)?;
+        let synth = Synth::load(rt, Path::new(&s.model_path), &self.cache_dir.join("voices"))?;
+        self.synth = Some((s.model_path.clone(), synth));
+        Ok(())
+    }
+
+    /// Render `text`, reusing a cached file when possible.
+    fn render(&mut self, s: &VoiceSettings, text: &str) -> Result<PathBuf, String> {
+        if self.builtin.is_none() {
+            return synthesize_cli(s, &self.cache_dir, text);
+        }
+        if s.model_path.is_empty() {
+            return Err("No voice selected. Choose a voice in Settings.".into());
+        }
+        let out = cache_path(&self.cache_dir, "builtin", s, text);
+        if out.is_file() {
+            return Ok(out);
+        }
+        self.load(s)?;
+        let (_, synth) = self.synth.as_mut().expect("voice loaded");
+        let samples = synth.speak(text, s.length_scale)?;
+        if samples.is_empty() {
+            return Err("The voice produced no audio.".into());
+        }
+        let wav = tts::wav_bytes(&samples, synth.sample_rate);
+        std::fs::create_dir_all(&self.cache_dir).map_err(|e| e.to_string())?;
+        let tmp = temp_path(&out);
+        std::fs::write(&tmp, wav).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &out).map_err(|e| e.to_string())?;
+        Ok(out)
+    }
+}
+
+fn cache_path(cache_dir: &Path, engine: &str, s: &VoiceSettings, text: &str) -> PathBuf {
+    let mut h = DefaultHasher::new();
+    (engine, &s.model_path, s.length_scale.to_bits(), text).hash(&mut h);
+    cache_dir.join(format!("{:016x}.wav", h.finish()))
+}
+
+fn temp_path(out: &Path) -> PathBuf {
+    static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+    out.with_extension(format!("{}.{}.tmp.wav", std::process::id(), NEXT_TMP.fetch_add(1, Ordering::Relaxed)))
+}
+
+/// Render `text` to a WAV file with an external Piper CLI.
+fn synthesize_cli(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<PathBuf, String> {
     if s.piper_path.is_empty() {
         return Err("Piper not found. Set the Piper path in Settings.".into());
     }
     if s.model_path.is_empty() {
         return Err("No voice model selected. Choose a Piper .onnx voice in Settings.".into());
     }
-    let mut h = DefaultHasher::new();
-    (&s.model_path, s.length_scale.to_bits(), text).hash(&mut h);
-    let out = cache_dir.join(format!("{:016x}.wav", h.finish()));
+    let out = cache_path(cache_dir, "cli", s, text);
     if out.is_file() {
         return Ok(out);
     }
     std::fs::create_dir_all(cache_dir).map_err(|e| e.to_string())?;
-    // Voice previews and the worker can synthesize the same phrase concurrently.
-    static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
-    let tmp = out.with_extension(format!("{}.{}.tmp.wav", std::process::id(), NEXT_TMP.fetch_add(1, Ordering::Relaxed)));
+    let tmp = temp_path(&out);
     let mut child = Command::new(&s.piper_path)
         .arg("--model")
         .arg(&s.model_path)
@@ -191,11 +273,16 @@ fn enqueue(queue: &mut Vec<Callout>, c: Callout) {
     queue.push(c);
 }
 
-fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, context: Arc<Context>, on_error: impl Fn(String)) {
+fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, mut speaker: Speaker, context: Arc<Context>, on_error: impl Fn(String)) {
     // The audio device is opened lazily and kept for the life of the thread.
     let mut audio: Option<(rodio::OutputStream, rodio::OutputStreamHandle)> = None;
     let mut queue: Vec<Callout> = Vec::new();
+    // Previews asked for while a callout was playing.
+    let mut renders: Vec<(String, Sender<Result<(), String>>)> = Vec::new();
     loop {
+        for (text, reply) in renders.drain(..) {
+            let _ = reply.send(speaker.render(&settings, &text).map(|_| ()));
+        }
         let msg = if queue.is_empty() {
             match rx.recv() {
                 Ok(m) => Some(m),
@@ -207,6 +294,16 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, co
         match msg {
             Some(Msg::Configure(s)) => {
                 settings = s;
+                if settings.enabled {
+                    // A new voice loads now rather than on the next callout.
+                    if let Err(e) = speaker.load(&settings) {
+                        on_error(e);
+                    }
+                }
+                continue;
+            }
+            Some(Msg::Render(text, reply)) => {
+                renders.push((text, reply));
                 continue;
             }
             Some(Msg::Say(c)) => {
@@ -216,6 +313,7 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, co
                     match m {
                         Msg::Say(c) => enqueue(&mut queue, c),
                         Msg::Configure(s) => settings = s,
+                        Msg::Render(text, reply) => renders.push((text, reply)),
                     }
                 }
             }
@@ -232,7 +330,7 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, co
             queue.clear();
             continue;
         }
-        let wav = match synthesize(&settings, &cache_dir, &c.text) {
+        let wav = match speaker.render(&settings, &c.text) {
             Ok(w) => w,
             Err(e) => {
                 on_error(e);
@@ -245,6 +343,7 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, co
             match m {
                 Msg::Say(next) => enqueue(&mut queue, next),
                 Msg::Configure(s) => settings = s,
+                Msg::Render(text, reply) => renders.push((text, reply)),
             }
         }
         queue.retain(|q| context.current(q));
@@ -262,13 +361,23 @@ fn worker(rx: Receiver<Msg>, mut settings: VoiceSettings, cache_dir: PathBuf, co
             on_error("No audio output device found.".into());
             continue;
         };
-        if let Err(e) = play(handle, &wav, &c, &rx, &mut settings, &mut queue, &context) {
+        if let Err(e) = play(handle, &wav, &c, &rx, &mut settings, &mut queue, &mut renders, &context) {
             on_error(format!("Playback failed: {e}"));
         }
     }
 }
 
-fn play(handle: &rodio::OutputStreamHandle, wav: &Path, call: &Callout, rx: &Receiver<Msg>, settings: &mut VoiceSettings, queue: &mut Vec<Callout>, context: &Context) -> Result<(), String> {
+#[allow(clippy::too_many_arguments)]
+fn play(
+    handle: &rodio::OutputStreamHandle,
+    wav: &Path,
+    call: &Callout,
+    rx: &Receiver<Msg>,
+    settings: &mut VoiceSettings,
+    queue: &mut Vec<Callout>,
+    renders: &mut Vec<(String, Sender<Result<(), String>>)>,
+    context: &Context,
+) -> Result<(), String> {
     let file = std::fs::File::open(wav).map_err(|e| e.to_string())?;
     let source = rodio::Decoder::new(BufReader::new(file)).map_err(|e| e.to_string())?;
     let sink = rodio::Sink::try_new(handle).map_err(|e| e.to_string())?;
@@ -288,6 +397,7 @@ fn play(handle: &rodio::OutputStreamHandle, wav: &Path, call: &Callout, rx: &Rec
                 *settings = s;
                 sink.set_volume(settings.volume.clamp(0.0, 1.0));
             }
+            Ok(Msg::Render(text, reply)) => renders.push((text, reply)),
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                 sink.stop();
                 break;
