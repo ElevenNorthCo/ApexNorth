@@ -74,6 +74,10 @@ struct SessionCtx {
     started_at: i64,
     db_id: Option<i64>,
     track: Option<(i64, String)>,
+    /// Race settings given to the engine, and the tyre fade per wear unit
+    /// learned from earlier sessions here.
+    conditions: Option<storage::SessionConditions>,
+    fade_per_wear: Option<f32>,
 }
 
 fn now_ms() -> i64 {
@@ -114,8 +118,25 @@ impl LiveHandler {
                 if let Ok(Some((time_ms, samples))) = db.best_lap_for(t.id, ctx.car_code) {
                     self.engine.set_reference(RefLap { time_ms, samples, standing_start: false });
                 }
+                // Same track, car and distance as an earlier race: assume it
+                // was run the same way until the driver says otherwise.
+                if let (Ok(None), Ok(Some(prev))) = (
+                    db.session_conditions(session_id),
+                    db.previous_conditions(session_id, t.id, ctx.car_code, ctx.total_laps as i32),
+                ) {
+                    let _ = db.set_session_conditions(session_id, Some(&prev));
+                }
+                ctx.fade_per_wear = db.tyre_fade_per_wear(session_id, t.id, ctx.car_code).unwrap_or(None);
                 ctx.track = Some((t.id, t.name));
             }
+        }
+        // Conditions can be noted (or changed) on the Session page mid-race.
+        let conditions = db.session_conditions(session_id).unwrap_or(None);
+        if conditions != ctx.conditions {
+            let wear = conditions.as_ref().and_then(|c| c.tyre_wear);
+            let fuel_off = conditions.as_ref().and_then(|c| c.fuel_rate) == Some(0);
+            self.engine.set_conditions(wear, ctx.fade_per_wear.zip(wear).map(|(f, w)| f * w as f32), fuel_off);
+            ctx.conditions = conditions;
         }
         match db.insert_lap(session_id, lap) {
             Ok(id) => {
@@ -162,6 +183,8 @@ impl Handler for LiveHandler {
                         started_at: now_ms(),
                         db_id: None,
                         track: None,
+                        conditions: None,
+                        fade_per_wear: None,
                     });
                 }
                 EngineEvent::SessionEnded => {

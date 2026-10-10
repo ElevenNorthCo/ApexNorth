@@ -15,7 +15,7 @@ import { Back, Check, Pencil, Trash } from "../components/icons";
 import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
 import { Flag } from "../components/Flag";
-import { KINDS, kindInfo, sessionKind, trackTitle } from "../lib/media";
+import { KINDS, conditionsMatch, kindInfo, sessionKind, trackTitle } from "../lib/media";
 
 export function SessionView({ sessionId }: { sessionId: number }) {
   const go = useStore((s) => s.go);
@@ -316,7 +316,9 @@ function ConditionsPicker({ session, laps, onChange }: { session: SessionSummary
 /** Your pace at this track split by session type: clean time-trial pace vs race pace with traffic and wear. */
 function TrackComparison({ session, all }: { session: SessionSummary; all: SessionSummary[] }) {
   if (session.trackId == null) return null;
-  const here = all.filter((s) => s.trackId === session.trackId);
+  const atTrack = all.filter((s) => s.trackId === session.trackId);
+  const here = atTrack.filter((s) => conditionsMatch(s.conditions, session.conditions));
+  const skipped = atTrack.length - here.length;
   const rows = KINDS.map((k) => {
     const ss = here.filter((s) => sessionKind(s) === k.value);
     const bests = ss.map((s) => s.bestMs).filter((v): v is number => v != null);
@@ -333,7 +335,14 @@ function TrackComparison({ session, all }: { session: SessionSummary; all: Sessi
   if (rows.filter((r) => r.sessions > 0).length < 1) return null;
   return (
     <>
-      <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Your pace here by session type</h2>
+      <h2 className="tech mb-2 mt-8 flex items-baseline gap-3 text-[13px] text-white/50">
+        Your pace here by session type
+        {skipped > 0 && (
+          <span className="normal-case text-[12px] text-white/40">
+            {skipped} {skipped === 1 ? "session" : "sessions"} with different conditions left out
+          </span>
+        )}
+      </h2>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {rows.map((r) => (
           <div

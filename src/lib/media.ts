@@ -115,3 +115,13 @@ export function conditionTags(c: SessionConditions | null | undefined): string[]
   if (c.fuelRate != null) out.push(c.fuelRate === 0 ? "No fuel use" : `Fuel ×${c.fuelRate}`);
   return out;
 }
+
+/**
+ * Whether two sessions' pace can be compared: BoP, tyre wear and fuel
+ * multipliers change the lap time, so a setting noted on both sides has to
+ * agree. A setting not noted on one side doesn't rule it out.
+ */
+export function conditionsMatch(a: SessionConditions | null | undefined, b: SessionConditions | null | undefined): boolean {
+  const same = <T,>(x: T | null | undefined, y: T | null | undefined) => x == null || y == null || x === y;
+  return same(a?.bop, b?.bop) && same(a?.tyreWear, b?.tyreWear) && same(a?.fuelRate, b?.fuelRate);
+}

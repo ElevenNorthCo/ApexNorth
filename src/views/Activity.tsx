@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type SessionKind, type SessionSummary } from "../lib/api";
 import { carName, delta, lapTime, shortDate, timeOfDay } from "../lib/format";
-import { KINDS, carClass, carImage, conditionTags, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
+import { KINDS, carClass, carImage, conditionTags, conditionsMatch, kindInfo, sessionKind, splitCar, trackTitle } from "../lib/media";
 import { useStore } from "../lib/store";
 import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
@@ -20,8 +20,8 @@ export function Activity() {
   }, [version]);
 
   /**
-   * Best lap against your previous best at the same track (sessions arrive
-   * newest first), preferring the same car. A first visit compares the best
+   * Best lap against your previous best at the same track under matching
+   * conditions (sessions arrive newest first), preferring the same car. A first visit compares the best
    * lap with the session's average instead.
    */
   const improvement = useMemo(() => {
@@ -29,7 +29,7 @@ export function Activity() {
     const all = sessions ?? [];
     all.forEach((s, i) => {
       if (s.bestMs == null) return;
-      const earlier = all.slice(i + 1).filter((e) => s.trackId != null && e.trackId === s.trackId && e.bestMs != null);
+      const earlier = all.slice(i + 1).filter((e) => s.trackId != null && e.trackId === s.trackId && e.bestMs != null && conditionsMatch(e.conditions, s.conditions));
       const sameCar = earlier.filter((e) => e.carCode === s.carCode);
       const pool = sameCar.length ? sameCar : earlier;
       if (pool.length) out.set(s.id, { ms: s.bestMs - Math.min(...pool.map((e) => e.bestMs!)), label: "Vs prev best" });

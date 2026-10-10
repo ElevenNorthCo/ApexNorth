@@ -35,6 +35,8 @@ export interface TyreEstimate {
   projectedProblemLap: number | null;
   confidence: number;
   stintLaps: number;
+  /** The fade rate comes from past sessions at this tyre wear, not this stint yet. */
+  fromHistory: boolean;
 }
 
 export interface ConnStatus {

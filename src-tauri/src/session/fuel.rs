@@ -59,6 +59,8 @@ pub struct FuelModel {
     /// Fuel level the "is it moving?" watch started from, and driving ticks since.
     watch: Option<(f32, u32)>,
     flat_laps: u32,
+    /// The driver noted fuel use as off (×0) for this session.
+    noted_off: bool,
 }
 
 impl FuelModel {
@@ -73,11 +75,20 @@ impl FuelModel {
     }
 
     pub fn state(&self) -> FuelState {
-        self.state
+        if self.noted_off {
+            FuelState::Inactive
+        } else {
+            self.state
+        }
+    }
+
+    /// Fuel use noted as off for this session: no fuel plan, straight away.
+    pub fn set_noted_off(&mut self, off: bool) {
+        self.noted_off = off;
     }
 
     pub fn active(&self) -> bool {
-        self.state == FuelState::Active
+        self.state() == FuelState::Active
     }
 
     /// Watch the live fuel level while driving so fuel-off modes are spotted

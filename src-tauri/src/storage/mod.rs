@@ -8,6 +8,7 @@ use std::path::Path;
 
 use crate::catalog::{cars, tracks};
 use crate::session::models::{CompletedLap, InvalidReason, Sample};
+use crate::session::tyres::fade_per_wear;
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -575,6 +576,60 @@ impl Db {
         Ok(())
     }
 
+    pub fn session_conditions(&self, session_id: i64) -> Result<Option<SessionConditions>> {
+        let json: Option<String> = self
+            .conn
+            .query_row("SELECT conditions FROM sessions WHERE id = ?1", params![session_id], |r| r.get(0))
+            .optional()
+            .map_err(err)?
+            .flatten();
+        Ok(json.and_then(|c| serde_json::from_str(&c).ok()))
+    }
+
+    /// Conditions of the latest earlier session that looks like the same
+    /// event: same track, car and race distance.
+    pub fn previous_conditions(&self, session_id: i64, track_id: i64, car_code: i32, total_laps: i32) -> Result<Option<SessionConditions>> {
+        let json: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT conditions FROM sessions
+                 WHERE track_id = ?1 AND car_code = ?2 AND total_laps = ?3 AND id != ?4 AND conditions IS NOT NULL
+                 ORDER BY started_at DESC LIMIT 1",
+                params![track_id, car_code, total_laps, session_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err)?;
+        Ok(json.and_then(|c| serde_json::from_str(&c).ok()))
+    }
+
+    /// Tyre fade per unit of wear multiplier (ms per lap) for this track and
+    /// car, from earlier sessions with tyre wear noted: the median of those
+    /// with a clear trend.
+    pub fn tyre_fade_per_wear(&self, session_id: i64, track_id: i64, car_code: i32) -> Result<Option<f32>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, conditions FROM sessions WHERE track_id = ?1 AND car_code = ?2 AND id != ?3 AND conditions IS NOT NULL")
+            .map_err(err)?;
+        let sessions: Vec<(i64, String)> = stmt
+            .query_map(params![track_id, car_code, session_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(err)?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(err)?;
+        let mut rates = vec![];
+        for (id, json) in sessions {
+            let Some(wear) = serde_json::from_str::<SessionConditions>(&json).ok().and_then(|c| c.tyre_wear) else { continue };
+            let laps: Vec<_> = self
+                .session_laps(id)?
+                .iter()
+                .map(|l| (l.lap_no as i16, l.time_ms as u32, l.is_valid, l.is_pit, l.fuel_used_pct.map(|f| f as f32)))
+                .collect();
+            rates.extend(fade_per_wear(&laps, wear));
+        }
+        rates.sort_by(|a, b| a.total_cmp(b));
+        Ok(rates.get(rates.len() / 2).copied())
+    }
+
     /// Tag a session as practice, qualifying, race or time trial (None = infer).
     pub fn set_session_kind(&self, session_id: i64, kind: Option<&str>) -> Result<()> {
         if let Some(k) = kind {
@@ -680,10 +735,15 @@ mod tests {
         assert_eq!(db.list_sessions().unwrap()[0].kind, None);
         let c = SessionConditions { mode: Some("online".into()), bop: Some(true), tyre_wear: Some(3), fuel_rate: Some(2) };
         db.set_session_conditions(s, Some(&c)).unwrap();
-        assert_eq!(db.list_sessions().unwrap()[0].conditions, Some(c));
+        assert_eq!(db.list_sessions().unwrap()[0].conditions, Some(c.clone()));
         assert!(db.set_session_conditions(s, Some(&SessionConditions { mode: Some("split".into()), ..Default::default() })).is_err());
+        assert_eq!(db.session_conditions(s).unwrap(), Some(c.clone()));
+        let next = db.create_session(1234, 5, 2).unwrap();
+        assert_eq!(db.previous_conditions(next, t.id, 1234, 5).unwrap(), Some(c));
+        assert_eq!(db.previous_conditions(next, t.id, 1234, 10).unwrap(), None);
         db.set_session_conditions(s, Some(&SessionConditions::default())).unwrap();
         assert_eq!(db.list_sessions().unwrap()[0].conditions, None);
+        assert_eq!(db.session_conditions(s).unwrap(), None);
         let detail = db.lap_detail(id).unwrap();
         assert_eq!(detail.summary.invalid_reason.as_deref(), Some("rewind_or_reset"));
         assert_eq!(detail.samples.len(), 50);
@@ -691,6 +751,26 @@ mod tests {
         assert_eq!(db.best_lap_for(t.id, 1234).unwrap().unwrap().0, 95_000);
         db.delete_session(s).unwrap();
         assert!(db.list_sessions().unwrap().is_empty());
+    }
+
+    #[test]
+    fn tyre_fade_is_learned_per_wear_multiplier() {
+        let db = Db::memory().unwrap();
+        let t = db.identify_track([100.0, 0.0, 200.0], 3000.0, &[]).unwrap();
+        let s = db.create_session(7, 8, 1).unwrap();
+        db.set_session_track(s, t.id).unwrap();
+        for i in 0..8 {
+            let mut l = lap(if i == 0 { 95_000 } else { 90_000 + i * 400 }, true);
+            l.lap_no = i as i16 + 1;
+            l.fuel_used_pct = Some(0.0);
+            db.insert_lap(s, &l).unwrap();
+        }
+        let live = db.create_session(7, 8, 2).unwrap();
+        assert_eq!(db.tyre_fade_per_wear(live, t.id, 7).unwrap(), None);
+        db.set_session_conditions(s, Some(&SessionConditions { tyre_wear: Some(4), ..Default::default() })).unwrap();
+        let f = db.tyre_fade_per_wear(live, t.id, 7).unwrap().unwrap();
+        assert!((f - 100.0).abs() < 2.0, "{f}");
+        assert_eq!(db.tyre_fade_per_wear(live, t.id, 8).unwrap(), None);
     }
 
     #[test]

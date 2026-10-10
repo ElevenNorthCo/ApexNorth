@@ -573,7 +573,11 @@ impl Engineer {
                     Chatty,
                     Priority::Low,
                     "tyre.projection",
-                    format!("At the current degradation rate, expect a significant pace loss around lap {pl}."),
+                    if t.from_history {
+                        format!("At this tyre wear, your past runs here say expect a significant pace loss around lap {pl}.")
+                    } else {
+                        format!("At the current degradation rate, expect a significant pace loss around lap {pl}.")
+                    },
                 ));
             }
         }

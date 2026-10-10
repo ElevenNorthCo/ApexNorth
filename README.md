@@ -141,7 +141,7 @@ Generated audio is cached, so repeated callouts play instantly. If the voice can
 ### Session recording & history
 - Every lap is recorded automatically at 30 Hz and saved locally in SQLite.
 - The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car render with make and model, laps, best and average lap, and the delta to your previous best there.
-- **Race conditions:** note how each session was run (single player or online, BoP on or off, tyre wear and fuel multipliers) from the Session page. They show as chips on the Activity card. GT7 doesn't send these, so you set them by hand; fuel use itself is always measured.
+- **Race conditions:** note how each session was run (single player or online, BoP on or off, tyre wear and fuel multipliers) from the Session page. They show as chips on the Activity card. GT7 doesn't send these, so you set them by hand; fuel use itself is always measured. A new race at the same track, car and distance starts with the last one's conditions, so you only change them when they change. Pace comparisons (the Activity delta and pace by type) only use sessions whose conditions match.
 - **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
 - Each Activity card shows a transparent render of the car you drove, centred above its make and model (574 cars, `src/assets/cars/`). A car newer than the bundled set just shows its name.
 - Every one of the 41 GT7 venues has a preview photo (`src/assets/tracks/`, one per venue, shared by all its layouts). It shows on the Activity card and in the Session header. A session whose track wasn't recognised gets generated art from its outline.
@@ -191,6 +191,7 @@ How it stays useful rather than noisy:
 - **Fuel:** a rolling average that reacts quickly to a real change in consumption. Strategy switches off automatically when the game isn't burning fuel (time trials), so you never hear "hundreds of laps of fuel".
 - **Pit window:** earliest, target and latest pit lap, plus the number of stops, from the current fuel, burn rate, full-tank range, laps remaining and a 0.3-lap reserve.
 - **Tyre degradation (estimated):** GT7 sends no wear data, so ApexNorth reads the stint's lap-time trend, corrected for the car getting lighter as fuel burns. It reports *Fresh / Stable / Declining / Poor / Critical*, a loss per lap, a lap where pace is expected to drop off, and a confidence. It never claims a wear percentage.
+- **Race conditions in the plan:** with tyre wear noted as off, the tyres never drive a stop; with fuel noted as off, there's no fuel plan from the first lap. With a wear multiplier noted, the fade you had at that track and car in earlier sessions (scaled to the multiplier) shapes the pit plan from lap 3, until the current stint's own trend is confident.
 - **Combined plan:** when the tyre estimate is confident, it can bring the stop forward ("Fuel can make lap 7, but tyre degradation favors stopping on lap 6"). Otherwise fuel decides.
 
 ---
@@ -353,7 +354,7 @@ The tests cover:
 - [x] Context-aware timing, priorities, anti-nag memory and phrase variation
 - [x] Late-lap "box this lap" reminder
 - [x] Live race position: confirmed live on PS5. Places gained or lost are called once settled (pass and re-pass is one call), with podium, lead and start-specific lines, calm wording after a spin, and chase encouragement while holding a place
-- [ ] **Milestone:** a full live race where the engineer feels involved without being annoying
+- [x] **Milestone:** a full live race where the engineer feels involved without being annoying ✔
 
 ### ✅ Phase 3.6: ApexNorth look & race position
 - [x] New neon UI: dashboard, top toolbar, Activity cards, Session, Settings and Connect redesigned
@@ -369,14 +370,14 @@ The tests cover:
 - [x] Activity delta: against your previous best at the track (same car first), or best vs. average on a first visit
 - [x] Driver name in Settings, used by the engineer ("Good luck out there, Michael.")
 - [x] Race conditions per session: single player or online, BoP, tyre wear and fuel multipliers (noted by hand; fuel use is measured)
-- [ ] Use the noted tyre wear and fuel multipliers in the strategy model, and compare pace only across matching conditions
+- [x] Noted race conditions feed the strategy model: tyre wear off means no tyre stops or fade calls, fuel off means no fuel plan, and a noted wear multiplier uses the fade from your past sessions at that track and car until the current stint has its own trend. A new race at the same track, car and distance inherits the last one's conditions
+- [x] Pace is compared only across matching conditions (BoP, tyre wear, fuel), on the Activity delta and the Session page's pace by type
 
 ### ✅ Phase 3.8: Car images
 - [x] 574 transparent car renders on Activity cards, centred and sized up, mapped from the GT7 car code (`src/lib/carImages.json`)
 - [x] Activity card layout rebalanced: the track outline sits beside the date so long names ("Fuji International Speedway") fit on one line, and the car image shrinks to make room for long car names and condition chips
 - [x] Lap analysis legend no longer hidden behind the back button
 - [x] A race's opening lap no longer counts when the grid sits past the line (Fuji): it's checked against the next full lap, and laps saved before the fix are repaired on launch
-- [ ] Car image in the Session header
 
 </details>
 

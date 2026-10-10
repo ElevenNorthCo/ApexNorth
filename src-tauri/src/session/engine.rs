@@ -286,6 +286,8 @@ pub struct Engine {
     strategy: Option<RaceStrategy>,
     plan: Option<PitPlan>,
     tyre_est: TyreEstimate,
+    /// (next lap, total laps) the plan was last made for.
+    plan_at: Option<(i16, i16)>,
     session_best: Option<u32>,
     best_sectors: [Option<u32>; SECTOR_COUNT],
     reference: Option<RefLap>,
@@ -326,6 +328,21 @@ impl Engine {
         }
     }
 
+    /// Race settings the driver noted for this session: the tyre wear
+    /// multiplier (with the fade it caused in past sessions, ms per lap) and
+    /// whether fuel use is off. The plan is redone straight away.
+    pub fn set_conditions(&mut self, tyre_wear: Option<u8>, tyre_prior_ms: Option<f32>, fuel_off: bool) {
+        self.tyres.set_wear(tyre_wear, tyre_prior_ms);
+        self.fuel.set_noted_off(fuel_off);
+        if let Some((next_lap, total)) = self.plan_at {
+            self.tyre_est = self.tyres.estimate();
+            if fuel_off {
+                self.strategy = None;
+            }
+            self.plan = self.strategy.as_ref().and_then(|s| strategy::plan(s, &self.tyre_est, next_lap, total));
+        }
+    }
+
     pub fn reference_ms(&self) -> Option<u32> {
         self.reference.as_ref().map(|r| r.time_ms)
     }
@@ -362,10 +379,11 @@ impl Engine {
         self.session_active = true;
         self.car_code = p.car_code;
         self.fuel.reset();
-        self.tyres.reset();
+        self.tyres.clear();
         self.tyre_est = TyreEstimate::default();
         self.strategy = None;
         self.plan = None;
+        self.plan_at = None;
         self.session_best = None;
         self.best_sectors = [None; SECTOR_COUNT];
         self.reference = None;
@@ -789,6 +807,7 @@ impl Engine {
         let tyres = self.tyres.estimate();
         self.tyre_est = tyres.clone();
         self.plan = self.strategy.as_ref().and_then(|s| strategy::plan(s, &tyres, next_lap, p.total_laps));
+        self.plan_at = Some((next_lap, p.total_laps));
         let ctx = LapContext {
             session_best_before: ctx_session_best,
             reference_before: ctx_reference,
