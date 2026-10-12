@@ -1,6 +1,6 @@
 //! Talks to `apexnorth-voice`, the separate voice program shipped with the
-//! app (`src-tauri/voice-helper`). It loads the Piper voice once and keeps it
-//! in memory; we send it text and it writes a WAV file. It runs as its own
+//! app (`src-tauri/voice-helper`). It loads the voice (Piper or Kokoro) once
+//! and keeps it in memory; we send it text and it writes a WAV file. It runs as its own
 //! process because it contains espeak-ng (GPL-3.0); a crash there never takes
 //! the app down, and the next callout simply starts it again.
 
@@ -119,6 +119,14 @@ impl VoiceHelper {
         self.request(json!({ "op": "load", "model": model, "cache": cache }), Duration::from_secs(90)).map(|_| ())
     }
 
+    /// Load a Kokoro speaker from the model in `dir`: a speaker name in the
+    /// model or a voice file. Switching between speakers of the loaded model
+    /// is instant; the first load takes a few seconds.
+    pub fn load_kokoro(&mut self, dir: &Path, voice: &str, lang: &str, cache: &Path) -> Result<(), String> {
+        let req = json!({ "op": "load", "engine": "kokoro", "model": dir, "voice": voice, "lang": lang, "cache": cache });
+        self.request(req, Duration::from_secs(90)).map(|_| ())
+    }
+
     /// Speak `text` into a WAV file at `out`. `length_scale` < 1 is faster.
     pub fn speak(&mut self, text: &str, length_scale: f32, out: &Path) -> Result<(), String> {
         self.request(json!({ "op": "speak", "text": text, "lengthScale": length_scale, "out": out }), Duration::from_secs(30)).map(|_| ())
@@ -152,7 +160,8 @@ mod tests {
         (s.len() as f32 / rate, rms)
     }
 
-    /// The real helper speaks every bundled voice (run in CI on each OS).
+    /// The real helper speaks every bundled Piper voice and the featured
+    /// Kokoro voices (run in CI on each OS).
     #[test]
     #[ignore]
     fn speaks_with_the_bundled_voice() {
@@ -179,8 +188,36 @@ mod tests {
             h.speak("Box this lap. Pit window laps 5 to 7.", 0.8, &fast).unwrap();
             assert!(wav_stats(&fast).0 < secs, "length scale speeds it up");
         }
+        // Every Kokoro voice in the catalog is in the bundled model, and the
+        // featured ones speak (George with a British accent).
+        let kokoro = crate::voices::kokoro_dir(Some(&dir)).expect("bundled Kokoro model");
+        let all = crate::voices::options(&[], Some(&dir));
+        for o in all.iter().filter(|o| o.group.starts_with("kokoro")) {
+            let crate::voices::VoiceRef::Kokoro { voice, lang } = crate::voices::VoiceRef::parse(&o.value) else { panic!() };
+            h.load_kokoro(&kokoro, voice, lang, &tmp.join("cache")).unwrap_or_else(|e| panic!("{voice}: {e}"));
+            if o.group != "kokoro" {
+                continue;
+            }
+            let t = std::time::Instant::now();
+            let out = tmp.join("k.wav");
+            h.speak("Box this lap. Pit window laps 5 to 7.", 1.0, &out).unwrap();
+            let (secs, rms) = wav_stats(&out);
+            println!("kokoro {voice} ({lang}): phrase {:?}, {secs:.2} s of audio, rms {rms:.3}", t.elapsed());
+            assert!(secs > 1.0 && secs < 8.0 && rms > 0.01, "{voice}: {secs} s, rms {rms}");
+        }
+        // A voice file: a speaker cut out of the model's table.
+        let table = std::fs::read(kokoro.join("voices.bin")).unwrap();
+        let file = tmp.join("bf_test.bin");
+        std::fs::write(&file, &table[..510 * 256 * 4]).unwrap();
+        h.load_kokoro(&kokoro, &file.display().to_string(), "en-gb", &tmp.join("cache")).unwrap();
+        h.speak("Radio check.", 1.0, &tmp.join("f.wav")).unwrap();
+        assert!(wav_stats(&tmp.join("f.wav")).1 > 0.01);
+
         // A bad request gets an error, and the helper keeps running.
         assert!(h.load(Path::new("/no/such/voice.onnx"), &tmp).is_err());
+        assert!(h.load_kokoro(&kokoro, "am_nobody", "en-us", &tmp).is_err());
+        assert!(h.load_kokoro(&kokoro, "am_michael", "xx", &tmp).is_err());
+        assert!(h.load_kokoro(&kokoro, &tmp.join("missing.pt").display().to_string(), "en-us", &tmp).is_err());
         assert!(h.alive());
         drop(h);
         let _ = std::fs::remove_dir_all(tmp);

@@ -1,5 +1,5 @@
-//! Speech output: Piper voice (the built-in engine, or an external Piper CLI)
-//! → cached WAV → rodio playback, on one worker thread with a small priority
+//! Speech output: Kokoro or Piper voice (the built-in engine), or an external
+//! Piper CLI → cached WAV → rodio playback, on one worker thread with a small priority
 //! queue that drops stale messages.
 
 use crossbeam_channel::{Receiver, Sender};
@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use super::voice_helper::VoiceHelper;
 use crate::settings::VoiceSettings;
+use crate::voices::{self, VoiceRef};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
@@ -161,7 +162,14 @@ impl Speaker {
             return Ok(());
         }
         let h = self.helper.as_mut().expect("helper running");
-        h.load(Path::new(&s.model_path), &self.cache_dir.join("voices"))?;
+        let cache = self.cache_dir.join("voices");
+        match VoiceRef::parse(&s.model_path) {
+            VoiceRef::Piper(model) => h.load(model, &cache)?,
+            VoiceRef::Kokoro { voice, lang } => {
+                let kokoro = voices::kokoro_dir(Some(dir)).ok_or("This build has no Kokoro voices. Choose another voice in Settings.")?;
+                h.load_kokoro(&kokoro, voice, lang, &cache)?
+            }
+        }
         self.loaded = Some(s.model_path.clone());
         Ok(())
     }
@@ -212,6 +220,9 @@ fn synthesize_cli(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<Pat
     }
     if s.model_path.is_empty() {
         return Err("No voice model selected. Choose a Piper .onnx voice in Settings.".into());
+    }
+    if !matches!(VoiceRef::parse(&s.model_path), VoiceRef::Piper(_)) {
+        return Err("Kokoro voices need the built-in voice engine. Choose a Piper .onnx voice in Settings.".into());
     }
     let out = cache_path(cache_dir, "cli", s, text);
     if out.is_file() {

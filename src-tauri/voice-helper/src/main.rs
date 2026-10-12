@@ -7,12 +7,15 @@
 //! Software Foundation, either version 3 of the License, or (at your option)
 //! any later version. It is distributed WITHOUT ANY WARRANTY; see COPYING.
 //!
-//! It loads espeak-ng (GPL-3.0) through sherpa-onnx, which is why it is a
+//! It speaks Piper and Kokoro voices, and loads espeak-ng (GPL-3.0) through sherpa-onnx, which is why it is a
 //! separate GPL program. The app talks to it over stdin/stdout, one JSON
 //! object per line:
 //!
 //!   → {"op":"load","model":"/path/voice.onnx","cache":"/cache/dir"}
 //!   ← {"ok":true,"sampleRate":22050}
+//!   → {"op":"load","engine":"kokoro","model":"/path/kokoro-dir","voice":"am_michael","lang":"en-us","cache":"/cache/dir"}
+//!   ← {"ok":true,"sampleRate":24000}
+//!     (`voice` is a speaker in the model, or a .pt / .npy / .bin voice file)
 //!   → {"op":"speak","text":"Box this lap.","lengthScale":0.9,"out":"/tmp/x.wav"}
 //!   ← {"ok":true,"seconds":1.4}
 //!   ← {"ok":false,"error":"..."}
@@ -59,10 +62,21 @@ fn handle(dir: &Path, req: &Value, synth: &mut Option<tts::Synth>) -> Result<Val
                 return Err(format!("voice engine files missing in {}", dir.display()));
             }
             let rt = tts::Runtime::get(dir)?;
-            *synth = None;
-            let v = tts::Synth::load(rt, Path::new(s("model")?), Path::new(s("cache")?))?;
-            let rate = v.sample_rate;
-            *synth = Some(v);
+            let (model, cache) = (Path::new(s("model")?), Path::new(s("cache")?));
+            let spec = match req["engine"].as_str().unwrap_or("piper") {
+                "piper" => tts::prepare_piper(model, cache)?,
+                "kokoro" => tts::prepare_kokoro(model, s("voice")?, req["lang"].as_str().unwrap_or("en-us"), cache)?,
+                e => return Err(format!("unknown voice engine {e}")),
+            };
+            match synth {
+                // Another speaker of the model that's loaded: no reload.
+                Some(v) if v.key == spec.key() => v.sid = spec.sid(),
+                _ => {
+                    *synth = None;
+                    *synth = Some(tts::Synth::load(rt, &spec)?);
+                }
+            }
+            let rate = synth.as_ref().map_or(0, |v| v.sample_rate);
             Ok(json!({ "ok": true, "sampleRate": rate }))
         }
         Some("speak") => {

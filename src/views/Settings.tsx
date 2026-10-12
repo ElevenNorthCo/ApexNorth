@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { api, type CatalogVoice, type Callouts, type ChatterLevel, type Settings, type VoiceDownload } from "../lib/api";
+import { api, type CatalogVoice, type Callouts, type ChatterLevel, type Settings, type VoiceDownload, type VoiceOption } from "../lib/api";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
@@ -21,6 +22,13 @@ const CALLOUTS: { key: keyof Callouts; label: string; hint: string }[] = [
   { key: "position", label: "Race position", hint: "Grid slot, places gained or lost, chasing the next car" },
 ];
 
+const VOICE_GROUPS: { group: VoiceOption["group"]; label: string }[] = [
+  { group: "kokoro", label: "Kokoro" },
+  { group: "kokoroMore", label: "More Kokoro voices" },
+  { group: "custom", label: "Your Kokoro voices" },
+  { group: "piper", label: "Piper" },
+];
+
 const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
   { value: "minimal", label: "Minimal", hint: "Critical information only." },
   { value: "normal", label: "Normal", hint: "Useful race updates without excessive chatter." },
@@ -31,7 +39,7 @@ const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
 export function SettingsView() {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
-  const [voices, setVoices] = useState<string[]>([]);
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [voicesDir, setVoicesDir] = useState("");
   const [builtin, setBuiltin] = useState(false);
   const [catalog, setCatalog] = useState<CatalogVoice[]>([]);
@@ -50,7 +58,12 @@ export function SettingsView() {
     api.voiceBuiltin().then(setBuiltin);
     getVersion().then(setVersion);
     const off = listen<VoiceDownload>("voice_download", (e) => setDownload(e.payload));
-    return () => void off.then((f) => f());
+    // Pick up voice files dropped into the folder while the app was in the background.
+    window.addEventListener("focus", loadVoices);
+    return () => {
+      window.removeEventListener("focus", loadVoices);
+      void off.then((f) => f());
+    };
   }, []);
 
   if (!settings) return null;
@@ -65,7 +78,7 @@ export function SettingsView() {
     const path = await open({
       multiple: false,
       directory: false,
-      filters: kind === "model" ? [{ name: "Piper voice", extensions: ["onnx"] }] : undefined,
+      filters: kind === "model" ? [{ name: "Voice (Kokoro .pt/.npy/.bin, Piper .onnx)", extensions: ["pt", "pth", "npy", "bin", "onnx"] }] : undefined,
     });
     if (typeof path === "string") {
       update((s) => {
@@ -106,10 +119,14 @@ export function SettingsView() {
 
   const v = settings.voice;
   const file = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.onnx$/, "") ?? p;
-  const name = (p: string) => {
-    const c = catalog.find((c) => c.id === file(p));
-    return c ? `${c.name} (${c.accent})` : file(p);
-  };
+  const current = voices.find((o) => o.value === v.modelPath);
+  const voiceHint = !current
+    ? v.modelPath || `Put voices in ${voicesDir}`
+    : current.group === "piper"
+      ? "Piper voice"
+      : current.group === "custom"
+        ? `Kokoro voice file: ${v.modelPath}`
+        : "Kokoro, built in";
   const more = catalog.filter((c) => !c.path);
 
   return (
@@ -145,7 +162,7 @@ export function SettingsView() {
         </Section>
 
         <Section title="Race engineer voice" color="var(--color-thr)">
-          <Row label="Voice callouts" hint={builtin ? "Built-in Piper voice, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}>
+          <Row label="Voice callouts" hint={builtin ? "Built-in Kokoro and Piper voices, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}>
             <Toggle checked={v.enabled} onChange={(c) => update((s) => void (s.voice.enabled = c))} />
           </Row>
           {!builtin && (
@@ -153,28 +170,45 @@ export function SettingsView() {
               <Btn onClick={() => browse("piper")}>Choose…</Btn>
             </Row>
           )}
-          <Row label="Voice" hint={v.modelPath ? v.modelPath : `Put .onnx voices in ${voicesDir}`}>
+          <Row label="Voice" hint={voiceHint}>
             <div className="flex items-center gap-2">
               {voices.length > 0 && (
                 <select
                   value={v.modelPath}
                   onChange={(e) => update((s) => void (s.voice.modelPath = e.target.value))}
-                  className="max-w-52 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-[14px] outline-none focus:border-accent"
+                  className="max-w-60 rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-[14px] outline-none focus:border-accent"
                 >
-                  {!voices.includes(v.modelPath) && <option value={v.modelPath}>{v.modelPath ? name(v.modelPath) : "Select…"}</option>}
-                  {voices.map((p) => (
-                    <option key={p} value={p}>
-                      {name(p)}
-                    </option>
-                  ))}
+                  {!current && <option value={v.modelPath}>{v.modelPath ? file(v.modelPath) : "Select…"}</option>}
+                  {VOICE_GROUPS.map(({ group, label }) => {
+                    const list = voices.filter((o) => o.group === group);
+                    return (
+                      list.length > 0 && (
+                        <optgroup key={group} label={label}>
+                          {list.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )
+                    );
+                  })}
                 </select>
               )}
               <Btn onClick={() => browse("model")}>Browse…</Btn>
             </div>
           </Row>
+          {builtin && (
+            <Row
+              label="Add your own voices"
+              hint="Kokoro .pt / .npy or Piper .onnx files in the voices folder join the list"
+            >
+              <Btn onClick={() => voicesDir && revealItemInDir(voicesDir).catch((e) => setMessage({ ok: false, text: String(e) }))}>Open folder</Btn>
+            </Row>
+          )}
           {more.length > 0 && (
             <div className="py-3.5">
-              <div className="text-[15px] font-medium">More voices</div>
+              <div className="text-[15px] font-medium">More Piper voices</div>
               <div className="text-[12px] text-white/45">Free Piper voices, downloaded once and then used offline</div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {more.map((c) => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Download the built-in voice engine and the bundled voice into
+"""Download the built-in voice engine and the bundled voices into
 src-tauri/resources/tts, so `tauri build` ships them and nobody has to
-install Piper.
+install anything.
 
     python3 scripts/fetch-voice.py                 # for this computer
     python3 scripts/fetch-voice.py --target x86_64-apple-darwin
@@ -11,12 +11,15 @@ What lands in resources/tts:
     lib/             sherpa-onnx C API + ONNX Runtime for the target (from npm)
     espeak-ng-data/  phoneme data for espeak-ng
     voices/          the bundled Piper voice (.onnx + .onnx.json)
+    kokoro/          the Kokoro model with its speakers (voices.bin) and the
+                     files sherpa-onnx needs to load it
     NOTICE.txt       where each part comes from, and its license
 
 Only the Python standard library is used. Re-running skips what's there.
 """
 
 import argparse
+import hashlib
 import io
 import json
 import platform
@@ -32,7 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "src-tauri" / "resources" / "tts"
 CATALOG = json.loads((ROOT / "src-tauri" / "voices.json").read_text())
 
-# Must match the struct layouts in src-tauri/src/engineer/tts.rs.
+# Must match the struct layouts in src-tauri/voice-helper/src/tts.rs.
 SHERPA_VERSION = "1.12.9"
 
 # Rust target -> (npm package suffix, library files the app loads)
@@ -138,6 +141,37 @@ def fetch_voice(voice_id):
         print(f"  no model card ({e})")
 
 
+# What the voice helper loads from the Kokoro package (it shares the top-level
+# espeak-ng-data, which is the same). dict/ is jieba's dictionary: only used for
+# Chinese, but sherpa-onnx won't load a multi-language Kokoro model without it.
+KOKORO_FILES = ["model.onnx", "voices.bin", "tokens.txt", "LICENSE",
+                "dict/jieba.dict.utf8", "dict/hmm_model.utf8", "dict/user.dict.utf8",
+                "dict/idf.utf8", "dict/stop_words.utf8"]
+
+
+def fetch_kokoro():
+    k = CATALOG["kokoro"]
+    dest = OUT / "kokoro"
+    marker = dest / "SOURCE"
+    if all((dest / f).is_file() for f in KOKORO_FILES) and marker.is_file() and marker.read_text().strip() == k["sha256"]:
+        print("kokoro: already there")
+        return
+    print("kokoro")
+    data = get(k["package"])
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != k["sha256"]:
+        sys.exit(f"kokoro package checksum mismatch: got {digest}, expected {k['sha256']}")
+    if dest.exists():
+        shutil.rmtree(dest)
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:bz2") as t:
+        root = t.getmembers()[0].name.split("/")[0]
+        for f in KOKORO_FILES:
+            p = dest / f
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(t.extractfile(t.getmember(f"{root}/{f}")).read())
+    marker.write_text(k["sha256"] + "\n")
+
+
 def build_helper(target):
     """The voice helper is its own GPL program (it loads espeak-ng); the app
     only talks to it over a pipe."""
@@ -181,6 +215,11 @@ lib/             sherpa-onnx {ver} (Apache-2.0) https://github.com/k2-fsa/sherpa
 espeak-ng-data/  espeak-ng phoneme data (GPL-3.0)
 voices/          Piper voices https://github.com/rhasspy/piper
                  Each voice's MODEL_CARD lists its dataset and license.
+kokoro/          Kokoro-82M v1.0 by hexgrad (Apache-2.0, kokoro/LICENSE), model and voices:
+                 https://huggingface.co/hexgrad/Kokoro-82M
+                 converted to ONNX by the sherpa-onnx project (Apache-2.0)
+kokoro/dict/     jieba dictionary (MIT) https://github.com/yanyiwu/cppjieba,
+                 required by sherpa-onnx to load Kokoro
 """
 
 
@@ -198,6 +237,7 @@ def main():
     fetch_libs(a.target)
     fetch_espeak()
     fetch_voice(a.voice)
+    fetch_kokoro()
     if not a.no_helper:
         build_helper(a.target)
     (OUT / "NOTICE.txt").write_text(NOTICE.format(ver=SHERPA_VERSION))

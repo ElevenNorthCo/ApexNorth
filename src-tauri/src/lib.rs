@@ -9,7 +9,7 @@ mod voices;
 use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::net::IpAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -381,15 +381,17 @@ fn save_settings(state: State<AppState>, settings: Settings) -> Result<(), Strin
     Ok(())
 }
 
+/// Voices to choose from: bundled Kokoro speakers, then voice files in the
+/// voices folder (and next to the current one), then Piper voices.
 #[tauri::command]
-fn list_voices(state: State<AppState>) -> Vec<String> {
+fn list_voices(state: State<AppState>) -> Vec<voices::VoiceOption> {
     let mut dirs = vec![state.voices_dir.clone()];
     dirs.extend(state.builtin_tts.as_ref().map(|d| d.join("voices")));
     let current = state.settings.read().voice.model_path.clone();
-    if let Some(dir) = PathBuf::from(&current).parent() {
+    if let Some(dir) = PathBuf::from(&current).parent().filter(|d| !d.as_os_str().is_empty()) {
         dirs.push(dir.to_path_buf());
     }
-    settings::find_voices(&dirs)
+    voices::options(&dirs, state.builtin_tts.as_deref())
 }
 
 #[tauri::command]
@@ -466,9 +468,10 @@ pub fn run() {
             let builtin_tts = voices::builtin_dir(app.path().resource_dir().ok());
             log::info!("voice engine: {}", builtin_tts.as_ref().map_or("external Piper".into(), |d| d.display().to_string()));
             if let Some(dir) = &builtin_tts {
-                // A missing voice (or none chosen yet) falls back to the bundled one.
-                if !Path::new(&settings.voice.model_path).is_file() {
-                    if let Some(v) = voices::bundled_voice(dir) {
+                // A missing voice (or none chosen yet) falls back to the
+                // default: Kokoro's Michael, or the bundled Piper voice.
+                if !voices::voice_available(&settings.voice.model_path, Some(dir)) {
+                    if let Some(v) = voices::default_voice(dir) {
                         settings.voice.model_path = v;
                     }
                 }

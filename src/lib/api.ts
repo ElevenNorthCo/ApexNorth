@@ -197,6 +197,7 @@ export interface Settings {
   voice: {
     enabled: boolean;
     piperPath: string;
+    /** A Piper .onnx path, "kokoro:<speaker>", or a Kokoro voice file (.pt/.npy/.bin). */
     modelPath: string;
     volume: number;
     lengthScale: number;
@@ -224,7 +225,7 @@ export const api = {
   trackCatalog: () => invoke<TrackLayout[]>("track_catalog"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
-  listVoices: () => invoke<string[]>("list_voices"),
+  listVoices: () => invoke<VoiceOption[]>("list_voices"),
   voicesDir: () => invoke<string>("voices_dir"),
   testVoice: (text: string) => invoke<void>("test_voice", { text }),
   /** True when the app ships its own voice engine (no Piper install needed). */
@@ -233,6 +234,14 @@ export const api = {
   /** Downloads a catalog voice; progress arrives as "voice_download" events. Returns the model path. */
   downloadVoice: (id: string) => invoke<string>("download_voice", { id }),
 };
+
+/** A voice to choose in Settings. `value` goes into `settings.voice.modelPath`. */
+export interface VoiceOption {
+  value: string;
+  label: string;
+  /** Bundled Kokoro voices ("kokoro" are the featured three), Kokoro voice files the user added, or Piper voices. */
+  group: "kokoro" | "kokoroMore" | "custom" | "piper";
+}
 
 /** A Piper voice from the built-in catalog (`src-tauri/voices.json`). */
 export interface CatalogVoice {

@@ -1,7 +1,7 @@
 [package]
 name = "apexnorth-voice"
 version = "0.1.0"
-description = "ApexNorth voice helper: speaks Piper voices with sherpa-onnx (espeak-ng)"
+description = "ApexNorth voice helper: speaks Piper and Kokoro voices with sherpa-onnx (espeak-ng)"
 authors = ["Eleven North"]
 edition = "2021"
 # This program loads espeak-ng (GPL-3.0), so it is GPL too. It runs as its
