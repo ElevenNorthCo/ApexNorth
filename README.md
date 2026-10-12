@@ -19,6 +19,7 @@
 </p>
 
 <p align="center">
+  <a href="https://apexnorth.app"><b>apexnorth.app</b></a> &middot;
   <a href="#install">Install</a> &middot;
   <a href="#features">Features</a> &middot;
   <a href="#connecting-to-your-playstation">Connect</a> &middot;
@@ -63,7 +64,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ## Install
 
-ApexNorth is free. Pick **one** of these. Both get the same app, with the race engineer's voice built in.
+ApexNorth is free. The easiest way is the website, **[apexnorth.app](https://apexnorth.app)**, which picks the right download for your computer. Or pick **one** of these. Both get the same app, with the race engineer's voice built in.
 
 ### Option 1: one command (easiest)
 
@@ -339,13 +340,17 @@ Without `fetch-voice.py` the app still runs, and falls back to a `piper` program
 
 ### Releases
 
-[GitHub Actions](.github/workflows/release.yml) builds the installers for macOS (Apple Silicon and Intel), Windows and Linux, with the built-in voice. Before building, it checks on each OS that the bundled voice actually speaks. To publish a release:
+[GitHub Actions](.github/workflows/release.yml) builds the installers for macOS (Apple Silicon and Intel), Windows and Linux, with the built-in voice. Before building, it checks on each OS that the bundled voice actually speaks.
 
-```bash
-git tag v0.2.0 && git push origin v0.2.0
-```
+- **Beta:** push to the `beta` branch. It rebuilds the one rolling pre-release, [`beta-latest`](https://github.com/ElevenNorthCo/ApexNorth/releases/tag/beta-latest), a stable link for testers.
+- **Release:** bump the version in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, then merge to `main`. If that version has no release yet, it's built and published as `v<version>`, the Latest release. A push to `main` that keeps the version builds nothing.
+- **By hand:** push a tag (`git tag v0.2.0 && git push origin v0.2.0`; a dash, `v0.2.0-beta.1`, makes a pre-release), or on GitHub open **Actions → Release → Run workflow** with a version. Leave the version empty to only build the installers (they're attached to the run).
 
-About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. No terminal needed: on GitHub, open **Actions → Release → Run workflow**, type the version (`v0.2.0`) and press **Run workflow**. Leave the version empty to only build the installers (they're attached to the run). A version with a dash (`v0.2.0-beta.1`) is published as a pre-release for testers; the update button and install commands skip pre-releases.
+About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the website and install commands pick them up, and everyone's app shows the **Update** button. The update button and install commands skip pre-releases.
+
+### Website
+
+[apexnorth.app](https://apexnorth.app) is the static page in [`site/`](site), published to GitHub Pages by [`pages.yml`](.github/workflows/pages.yml) on every push to `main` that changes it, the screenshots or the install scripts. Its download buttons point at `releases/latest/download/<installer>`, so a new release needs no website change.
 
 The tests cover:
 - crypto round-trips for all three packet variants
@@ -433,9 +438,9 @@ The tests cover:
 </details>
 
 ### 🔜 Phase 4: Polish & distribution
-- [x] Piper voice engine built in (sherpa-onnx, loaded in-process) with the Ryan voice bundled: no Piper install, works straight after installing
+- [x] Voice engine built in (sherpa-onnx, in a separate GPL helper program): no Piper install, works straight after installing
 - [x] Voice kept loaded in memory, so new callouts are near-instant (was about 2.5 s for an uncached phrase)
-- [x] Four more voices (Alan, Northern English, Lessac, Amy) downloadable with one click in Settings
+- [x] ~~Ryan voice bundled, four more Piper voices downloadable~~: shipped in 0.1.0, replaced by Kokoro in 0.2.0 (see below)
 - [x] Kokoro voices built in (Apache-2.0) and the new default: Michael, Heart and George picked out, 19 more English voices in the list, and your own Kokoro voice files (`.pt`, `.npy`) from the voices folder
 - [x] Ryan and the downloadable Piper voices removed: their training data is noncommercial or research-only. Only Kokoro ships now
 - [x] **Test voice** plays the whole phrase (status updates while not connected used to cut it off)
@@ -449,6 +454,8 @@ The tests cover:
 - [x] One-line install commands (`install.sh`, `install.ps1`) and an in-app **Update** button when a new release is out
 - [ ] Signed auto-update (download and install inside the app), and Apple/Windows code signing
 - [x] App icon and branding
+- [x] Website: [apexnorth.app](https://apexnorth.app), a landing page with downloads for every OS (picks yours automatically) and the install commands
+- [x] **Milestone:** 0.2.0, the first release with Kokoro voices, the beta channel and the website
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application

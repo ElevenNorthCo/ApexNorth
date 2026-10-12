@@ -1,5 +1,7 @@
 ## Install
 
+Easiest: **[apexnorth.app](https://apexnorth.app)** picks the right download for you.
+
 | Computer | Download |
 |---|---|
 | Mac with Apple Silicon (M1 or newer) | **ApexNorth-macOS-AppleSilicon.dmg** |
