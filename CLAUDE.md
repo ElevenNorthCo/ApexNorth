@@ -7,7 +7,7 @@ The README has the full feature list, the protocol details, and the **phase road
 ## Commands
 
 ```bash
-python3 scripts/fetch-voice.py    # once: built-in voice into src-tauri/resources/tts (git-ignored)
+python3 scripts/fetch-voice.py    # once: built-in voices (Piper Ryan + Kokoro, ~520 MB) into src-tauri/resources/tts (git-ignored)
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
 cd src-tauri && cargo test        # Rust unit tests (fast, ~64 tests)
 npx tsc --noEmit                  # type-check the frontend
@@ -51,6 +51,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
          → director.rs    chatter level, category toggle, anti-nag cooldown, routine gap, calm-moment hold
          → voice.rs       priority queue (High clears Low) → Speaker → cached WAV → rodio
              └ voice_helper.rs  runs `apexnorth-voice` (src-tauri/voice-helper, GPL) over a JSON-lines pipe
+                          (Piper or Kokoro; voices.rs parses the voice setting and lists the choices)
                           (falls back to an external piper CLI when resources/tts is empty)
        emits Tauri events: "telemetry" (LiveState, 30 Hz), "connection", "lap", "lap_invalid", "engineer", "voice_error"
 ```
@@ -120,9 +121,18 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 ## Built-in voice & releases
 - **GPL boundary:** espeak-ng (inside the sherpa-onnx library) is GPL-3.0, so it is only ever loaded by the separate helper program `src-tauri/voice-helper` (`apexnorth-voice`, GPL-3.0-or-later, its own Cargo workspace). The app (PolyForm) must never link or `dlopen` sherpa/espeak itself; it starts the helper and sends `{"op":"load"|"speak"}` lines (see the helper's `main.rs`). A helper crash only stops the voice; `Speaker` restarts it.
 - `voice-helper/src/tts.rs` loads sherpa-onnx **1.12.9** (`#[repr(C)]` structs must match that version's `c-api.h`; the npm packages `sherpa-onnx-<platform>@1.12.9` carry the libraries). Piper voices (`.onnx` + `.onnx.json`) are prepared once into the cache: metadata appended to the ONNX protobuf (field 14) and `tokens.txt` from the phoneme map (single-character tokens only: sherpa calls `exit()` on a bad token file, so validate before `SherpaOnnxCreateOfflineTts`).
-- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`apexnorth-voice` built with cargo, `lib/`, `espeak-ng-data/`, `voices/en_US-ryan-high`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
+- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`apexnorth-voice` built with cargo, `lib/`, `espeak-ng-data/`, `voices/en_US-ryan-high`, `kokoro/`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
 - `src-tauri/voices.json` is the voice catalog (bundled + 4 downloadable from HuggingFace `rhasspy/piper-voices` v1.0.0), read by Rust and the fetch script.
-- `.github/workflows/release.yml`: tag `v*` → 4 installers with fixed names (`ApexNorth-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-Setup.exe`, `-Linux.AppImage`/`.deb`), voice smoke test (`speaks_with_the_bundled_voice`, ignored locally) on mac arm64, Windows, Linux, then a GitHub Release. Dash tags are pre-releases. **Actions → Release → Run workflow** with a version publishes too (the release action creates the tag); Claude's sessions can't push tags or dispatch workflows, but a pushed commit whose message contains `[build installers]` builds without publishing. `install.sh` / `install.ps1` download `releases/latest/download/<fixed name>`; `lib/updates.ts` shows the TopBar **Update** button from `releases/latest`. All of these need the repo to be public.
+- **Kokoro** (the default voice engine, user's choice 2026-10-11): Kokoro-82M v1.0, Apache-2.0, sherpa's fp32 `kokoro-multi-lang-v1_0` package (SHA-256 pinned in `voices.json`) unpacked by `fetch-voice.py` into `resources/tts/kokoro/` (`model.onnx`, `voices.bin` with 54 speakers, `tokens.txt`, `dict/`, `LICENSE`).
+  - fp32, not int8: on the user's Intel i7-9750H (no VNNI), int8 ran about 1.4× slower than real time and fp32 about 0.45× (a short callout in about 0.6 s). It costs about 325 MB in the bundle.
+  - The voice setting (`voice.modelPath`) is one string: a Piper `.onnx` path, `kokoro:<speaker>` (e.g. `kokoro:am_michael`), or a Kokoro voice file path (`.pt`/`.pth`/`.npy`, or a `.bin` of exactly 510×256 float32). `voices::VoiceRef::parse` decides. New installs, and any missing voice, default to `kokoro:am_michael`. Existing choices are kept.
+  - Featured voices: `am_michael`, `af_heart`, `bm_george` (`featured` in `voices.json`), plus 19 more English speakers in the list. Kokoro has no Australian voice.
+  - Accent: `b?_` names → `en-gb`, else `en-us`; the helper maps `en-gb` to espeak's `en` voice. An unknown espeak voice name throws a C++ exception that aborts the helper, so the helper only accepts the two it knows.
+  - sherpa 1.12.9 needs `lang` **and** `dict_dir` (jieba files) for a v1.0 model or it calls `exit()`. It never checks `voices.bin`, so the helper checks its size against the model's `n_speakers × style_dim` metadata (read from the ONNX file without loading it). With `lang` set, English always goes through espeak-ng; the lexicon files aren't used, so they aren't shipped.
+  - A voice file is copied into slot 0 of a cached copy of `voices.bin` and spoken as speaker 0. Speakers that share the loaded model and accent switch without a reload; a new accent reloads, which takes about 3–5 s.
+  - `max_num_sentences` must be 1 for Kokoro (sherpa warns on every phrase otherwise).
+- **Release flow** (set up 2026-10-11): new work goes on a feature branch → merged into `beta` and pushed, which publishes the rolling **ApexNorth Beta** pre-release (tag `beta-latest`, replaced each push; link for testers: `releases/tag/beta-latest`) → merged into `main` with the version bumped in `tauri.conf.json`, `package.json` and `Cargo.toml`, which publishes `v<version>` as Latest. A `main` push that keeps an already-released version builds nothing. Bump the version when a branch is headed for `main`.
+- `.github/workflows/release.yml`: a `plan` job decides what to build and publish (see the comment at the top). Tag `v*` → 4 installers with fixed names (`ApexNorth-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-Setup.exe`, `-Linux.AppImage`/`.deb`), voice smoke test (`speaks_with_the_bundled_voice`, ignored locally) on mac arm64, Windows, Linux, then a GitHub Release. Dash tags are pre-releases. **Actions → Release → Run workflow** with a version publishes too (the release action creates the tag); Claude's sessions can't push tags or dispatch workflows, but a pushed commit whose message contains `[build installers]` builds without publishing. `install.sh` / `install.ps1` download `releases/latest/download/<fixed name>`; `lib/updates.ts` shows the TopBar **Update** button from `releases/latest`. All of these need the repo to be public (it is).
 - macOS builds are ad-hoc signed (`signingIdentity: "-"`, `hardenedRuntime: false` so the bundled dylibs load).
 
 ## README screenshots
@@ -150,7 +160,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - The voice helper is GPL-3.0-or-later (`src-tauri/voice-helper/COPYING`). Third-party components and data are listed in `THIRD_PARTY_NOTICES.md`; add new bundled libraries, voices or datasets there. `.github/FUNDING.yml` drives the Sponsor button.
 
 ## Workflow
-- Repo: private `github.com/ElevenNorthCo/ApexNorth`, branch `main`.
+- Repo: public `github.com/ElevenNorthCo/ApexNorth`, branches `main` (releases) and `beta` (test builds).
   - Commit and push when the user asks.
   - End commit messages with the Co-Authored-By line from the system attribution.
 - **The user likes quick, small tweaks with visible results:**

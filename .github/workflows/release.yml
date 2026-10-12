@@ -1,14 +1,20 @@
 # Builds the installers with the built-in voice, checks the voice actually
 # speaks on each OS, and publishes a GitHub Release.
 #
-#   Release:  push a version tag   git tag v0.2.0 && git push origin v0.2.0
-#   Beta:     a tag with a dash    v0.2.0-beta.1  (marked pre-release; the
-#             in-app update notice and install scripts skip pre-releases)
-#   From the website: Actions → Release → Run workflow, and type a version
-#             (v0.2.0) to publish it, or leave it empty to only build.
-#   Test run: push a commit whose
-#             message contains [build installers] (builds, no release;
-#             the installers are attached to the run as artifacts)
+#   Release:  merge to main with a new version in src-tauri/tauri.conf.json
+#             (and package.json / Cargo.toml). If there's no release for that
+#             version yet, it's built and published as v<version>, the Latest
+#             release that the install scripts and Update button use. A push
+#             to main that keeps the version builds nothing.
+#   Beta:     push to the `beta` branch. Builds and replaces the one rolling
+#             pre-release, tag `beta-latest`: a stable link for testers.
+#             Pre-releases are skipped by the Update button and install scripts.
+#   By hand:  push a version tag (git tag v0.2.0 && git push origin v0.2.0;
+#             a dash, v0.2.0-beta.1, makes a pre-release), or Actions → Release
+#             → Run workflow with a version (empty = build only).
+#   Test run: push a commit to any branch whose message contains
+#             [build installers] (builds, no release; the installers are
+#             attached to the run as artifacts)
 name: Release
 
 on:
@@ -31,10 +37,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      tag: ${{ steps.plan.outputs.tag }}
+      app: ${{ steps.plan.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Through env, never pasted into the script.
+          MESSAGE: ${{ github.event.head_commit.message }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          tag=""
+          build=false
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            build=true
+            [[ -n "$INPUT_VERSION" ]] && tag="v${INPUT_VERSION#v}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "v$version is already released; nothing to publish."
+            else
+              tag="v$version"
+            fi
+          elif [[ "$GITHUB_REF" == refs/heads/beta ]]; then
+            tag="beta-latest"
+          fi
+          [[ -n "$tag" || "$MESSAGE" == *"[build installers]"* ]] && build=true
+          # Installers want plain x.y.z; a beta suffix only goes on the release.
+          app="$version"
+          [[ "$tag" == v* ]] && app="${tag#v}" && app="${app%%-*}"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "build=$build tag=${tag:-none} app=$app"
+
   build:
     name: ${{ matrix.name }}
-    # Branch pushes only build when asked to (macOS minutes are costly on a private repo).
-    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '[build installers]')
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -106,22 +154,8 @@ jobs:
         working-directory: src-tauri
         run: cargo test --target ${{ matrix.target }} speaks_with_the_bundled_voice -- --ignored --nocapture
 
-      - name: Version
-        id: version
-        run: |
-          if [[ -n "${{ inputs.version }}" ]]; then
-            v="${{ inputs.version }}"; v="${v#v}"
-          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            v="${GITHUB_REF_NAME#v}"
-          else
-            v="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          fi
-          # Installers want plain x.y.z; a beta suffix only goes on the release.
-          echo "app=${v%%-*}" >> "$GITHUB_OUTPUT"
-          echo "Building version ${v%%-*}"
-
       - name: Build
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config '{"version":"${{ steps.version.outputs.app }}"}'
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config '{"version":"${{ needs.plan.outputs.app }}"}'
 
       - name: Collect installers
         run: |
@@ -144,11 +178,16 @@ jobs:
 
   release:
     name: Publish release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+    needs: [plan, build]
+    if: needs.plan.outputs.tag != ''
     runs-on: ubuntu-latest
+    # Two beta pushes in a row publish one after the other.
+    concurrency:
+      group: publish-${{ needs.plan.outputs.tag }}
+      cancel-in-progress: false
     env:
-      TAG: ${{ inputs.version != '' && inputs.version || github.ref_name }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -156,16 +195,29 @@ jobs:
           path: out
           merge-multiple: true
       - run: ls -la out
-      - name: Tag name
-        id: tag
-        run: echo "tag=v${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Release notes
+        run: |
+          if [[ "$TAG" == beta-latest ]]; then
+            {
+              echo "**Test build** from the \`beta\` branch, commit ${GITHUB_SHA::7}. It may have bugs; the regular version is under [Latest](https://github.com/$GITHUB_REPOSITORY/releases/latest)."
+              echo
+              git log -1 --format='Latest change: %s'
+              echo
+              cat .github/release-notes.md
+            } > notes.md
+            # One rolling beta: replace the previous one and its tag.
+            gh release delete beta-latest --cleanup-tag --yes || true
+          else
+            cp .github/release-notes.md notes.md
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           # Creates the tag on this commit when it doesn't exist yet.
-          tag_name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          name: ApexNorth ${{ steps.tag.outputs.tag }}
-          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
-          generate_release_notes: true
-          body_path: .github/release-notes.md
+          name: ${{ env.TAG == 'beta-latest' && format('ApexNorth Beta ({0})', needs.plan.outputs.app) || format('ApexNorth {0}', env.TAG) }}
+          prerelease: ${{ env.TAG == 'beta-latest' || contains(env.TAG, '-') }}
+          make_latest: ${{ env.TAG != 'beta-latest' && !contains(env.TAG, '-') }}
+          generate_release_notes: ${{ env.TAG != 'beta-latest' }}
+          body_path: notes.md
           files: out/*
