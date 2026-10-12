@@ -31,7 +31,7 @@ struct AppState {
     settings: Arc<RwLock<Settings>>,
     settings_path: PathBuf,
     voices_dir: PathBuf,
-    /// Bundled voice engine (`lib/`, `espeak-ng-data/`, `voices/`), when present.
+    /// Bundled voice engine (`lib/`, `espeak-ng-data/`, `kokoro/`), when present.
     builtin_tts: Option<PathBuf>,
     voice: Voice,
     status: Arc<Mutex<ConnStatus>>,
@@ -221,7 +221,9 @@ impl Handler for LiveHandler {
     }
 
     fn status(&mut self, s: &ConnStatus) {
-        *self.status.lock() = s.clone();
+        // The link reports its state every second; only a drop out of Live
+        // ends what the engineer was saying.
+        let was_live = std::mem::replace(&mut *self.status.lock(), s.clone()).state == ConnState::Live;
         let _ = self.app.emit("connection", s);
         if s.state == ConnState::Live {
             // Remember the console so the next launch connects straight away.
@@ -243,7 +245,9 @@ impl Handler for LiveHandler {
                     .ok();
             }
         } else {
-            self.voice.clear();
+            if was_live {
+                self.voice.clear();
+            }
             self.awake = None;
         }
     }
@@ -333,8 +337,8 @@ fn session_laps(state: State<AppState>, session_id: i64) -> Result<Vec<LapSummar
 }
 
 #[tauri::command]
-fn track_laps(state: State<AppState>, track_id: i64) -> Result<Vec<LapSummary>, String> {
-    state.db.lock().track_laps(track_id, 20)
+fn track_laps(state: State<AppState>, track_id: i64, car_code: i32) -> Result<Vec<LapSummary>, String> {
+    state.db.lock().track_laps(track_id, car_code, 20)
 }
 
 #[tauri::command]
@@ -386,7 +390,6 @@ fn save_settings(state: State<AppState>, settings: Settings) -> Result<(), Strin
 #[tauri::command]
 fn list_voices(state: State<AppState>) -> Vec<voices::VoiceOption> {
     let mut dirs = vec![state.voices_dir.clone()];
-    dirs.extend(state.builtin_tts.as_ref().map(|d| d.join("voices")));
     let current = state.settings.read().voice.model_path.clone();
     if let Some(dir) = PathBuf::from(&current).parent().filter(|d| !d.as_os_str().is_empty()) {
         dirs.push(dir.to_path_buf());
@@ -404,7 +407,11 @@ async fn test_voice(state: State<'_, AppState>, text: String) -> Result<(), Stri
     let v = state.voice.clone();
     let t = text.clone();
     tauri::async_runtime::spawn_blocking(move || v.render(t)).await.map_err(|e| e.to_string())??;
-    state.voice.say(Callout::new(Priority::High, text));
+    // A test phrase isn't about a session, so nothing that clears the
+    // engineer's calls (connecting, a session starting) cuts it off.
+    let mut c = Callout::new(Priority::High, text);
+    c.outlives_session = true;
+    state.voice.say(c);
     Ok(())
 }
 
@@ -412,25 +419,6 @@ async fn test_voice(state: State<'_, AppState>, text: String) -> Result<(), Stri
 #[tauri::command]
 fn voice_builtin(state: State<AppState>) -> bool {
     state.builtin_tts.is_some()
-}
-
-#[tauri::command]
-fn voice_catalog(state: State<AppState>) -> Vec<voices::CatalogVoice> {
-    voices::catalog(&state.voices_dir, state.builtin_tts.as_deref())
-}
-
-/// Download a catalog voice into the voices folder; returns its model path.
-/// Progress arrives as "voice_download" events.
-#[tauri::command]
-async fn download_voice(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, String> {
-    let dir = state.voices_dir.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        voices::download(&id, &dir, |received, total| {
-            let _ = app.emit("voice_download", voices::Progress { id: id.clone(), received, total });
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -468,8 +456,8 @@ pub fn run() {
             let builtin_tts = voices::builtin_dir(app.path().resource_dir().ok());
             log::info!("voice engine: {}", builtin_tts.as_ref().map_or("external Piper".into(), |d| d.display().to_string()));
             if let Some(dir) = &builtin_tts {
-                // A missing voice (or none chosen yet) falls back to the
-                // default: Kokoro's Michael, or the bundled Piper voice.
+                // A missing voice (none chosen yet, or Ryan from an older
+                // version) falls back to the default: Kokoro's Michael.
                 if !voices::voice_available(&settings.voice.model_path, Some(dir)) {
                     if let Some(v) = voices::default_voice(dir) {
                         settings.voice.model_path = v;
@@ -532,8 +520,6 @@ pub fn run() {
             set_session_kind,
             set_session_conditions,
             voice_builtin,
-            voice_catalog,
-            download_voice,
             rename_track,
             track_catalog,
             get_settings,

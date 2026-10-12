@@ -10,12 +10,11 @@ The race engineer's voice runs in **`apexnorth-voice`**, a separate program ship
 
 | Component | Used for | License |
 |---|---|---|
-| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 1.12.9 (loaded by the voice helper) | Runs the Kokoro and Piper voices | Apache-2.0. Source of the exact version: https://github.com/k2-fsa/sherpa-onnx/tree/v1.12.9 |
+| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 1.12.9 (loaded by the voice helper) | Runs the Kokoro voices (and any Piper voice a user adds) | Apache-2.0. Source of the exact version: https://github.com/k2-fsa/sherpa-onnx/tree/v1.12.9 |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) 1.17.1 | Runs the voice model | MIT |
 | [espeak-ng](https://github.com/espeak-ng/espeak-ng) (built into the sherpa-onnx library, used only by the voice helper) and its `espeak-ng-data` | Turns text into phonemes for the voice | GPL-3.0-or-later. Source: https://github.com/espeak-ng/espeak-ng, and the build used by sherpa-onnx: https://github.com/csukuangfj/espeak-ng |
 | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) v1.0 by hexgrad: the model and its voices (`voices.bin`), in the ONNX conversion published by sherpa-onnx ([`kokoro-multi-lang-v1_0`](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)) | The default race engineer voices (Michael, Heart, George and more) | Apache-2.0 (copied as `tts/kokoro/LICENSE`). Trained on permissive and public-domain audio, per its model card |
 | [jieba](https://github.com/yanyiwu/cppjieba) dictionary (`tts/kokoro/dict/`) | Required by sherpa-onnx to load the Kokoro model (only used for Chinese text) | MIT |
-| [Piper](https://github.com/rhasspy/piper) voices (Ryan bundled; Alan, Northern English, Lessac and Amy downloadable) | The race engineer's voice | Per voice: see each voice's `MODEL_CARD` on [Hugging Face](https://huggingface.co/rhasspy/piper-voices) (copied next to the bundled voice). Ryan's training data is CC BY-NC-SA 4.0 (noncommercial) |
 | [Tauri](https://tauri.app), [React](https://react.dev) and the other Rust crates and npm packages in `Cargo.lock` / `package-lock.json` | App framework and libraries | Their own licenses, mostly MIT or Apache-2.0 |
 | Fonts: Inter, Saira, Chakra Petch, JetBrains Mono (via Fontsource) | UI text | SIL Open Font License 1.1 |
 

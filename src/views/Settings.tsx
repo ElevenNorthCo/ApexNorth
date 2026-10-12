@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { api, type CatalogVoice, type Callouts, type ChatterLevel, type Settings, type VoiceDownload, type VoiceOption } from "../lib/api";
+import { api, type Callouts, type ChatterLevel, type Settings, type VoiceOption } from "../lib/api";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
@@ -26,7 +25,7 @@ const VOICE_GROUPS: { group: VoiceOption["group"]; label: string }[] = [
   { group: "kokoro", label: "Kokoro" },
   { group: "kokoroMore", label: "More Kokoro voices" },
   { group: "custom", label: "Your Kokoro voices" },
-  { group: "piper", label: "Piper" },
+  { group: "piper", label: "Your Piper voices" },
 ];
 
 const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
@@ -42,28 +41,19 @@ export function SettingsView() {
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [voicesDir, setVoicesDir] = useState("");
   const [builtin, setBuiltin] = useState(false);
-  const [catalog, setCatalog] = useState<CatalogVoice[]>([]);
-  const [download, setDownload] = useState<VoiceDownload | null>(null);
   const [version, setVersion] = useState("");
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const loadVoices = () => {
-    api.listVoices().then(setVoices);
-    api.voiceCatalog().then(setCatalog);
-  };
+  const loadVoices = () => void api.listVoices().then(setVoices);
   useEffect(loadVoices, [settings?.voice.modelPath]);
   useEffect(() => {
     api.voicesDir().then(setVoicesDir);
     api.voiceBuiltin().then(setBuiltin);
     getVersion().then(setVersion);
-    const off = listen<VoiceDownload>("voice_download", (e) => setDownload(e.payload));
     // Pick up voice files dropped into the folder while the app was in the background.
     window.addEventListener("focus", loadVoices);
-    return () => {
-      window.removeEventListener("focus", loadVoices);
-      void off.then((f) => f());
-    };
+    return () => window.removeEventListener("focus", loadVoices);
   }, []);
 
   if (!settings) return null;
@@ -102,21 +92,6 @@ export function SettingsView() {
     }
   };
 
-  const getVoice = async (c: CatalogVoice) => {
-    setMessage(null);
-    setDownload({ id: c.id, received: 0, total: null });
-    try {
-      const path = await api.downloadVoice(c.id);
-      loadVoices();
-      update((s) => void (s.voice.modelPath = path));
-      setMessage({ ok: true, text: `${c.name} is ready. Try the test button.` });
-    } catch (e) {
-      setMessage({ ok: false, text: String(e) });
-    } finally {
-      setDownload(null);
-    }
-  };
-
   const v = settings.voice;
   const file = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.onnx$/, "") ?? p;
   const current = voices.find((o) => o.value === v.modelPath);
@@ -127,7 +102,6 @@ export function SettingsView() {
       : current.group === "custom"
         ? `Kokoro voice file: ${v.modelPath}`
         : "Kokoro, built in";
-  const more = catalog.filter((c) => !c.path);
 
   return (
     <div className="scroll-thin h-full overflow-y-auto pb-16">
@@ -162,7 +136,7 @@ export function SettingsView() {
         </Section>
 
         <Section title="Race engineer voice" color="var(--color-thr)">
-          <Row label="Voice callouts" hint={builtin ? "Built-in Kokoro and Piper voices, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}>
+          <Row label="Voice callouts" hint={builtin ? "Built-in Kokoro voices, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}>
             <Toggle checked={v.enabled} onChange={(c) => update((s) => void (s.voice.enabled = c))} />
           </Row>
           {!builtin && (
@@ -201,35 +175,10 @@ export function SettingsView() {
           {builtin && (
             <Row
               label="Add your own voices"
-              hint="Kokoro .pt / .npy or Piper .onnx files in the voices folder join the list"
+              hint="Kokoro .pt / .npy files (or your own Piper .onnx) in the voices folder join the list"
             >
               <Btn onClick={() => voicesDir && revealItemInDir(voicesDir).catch((e) => setMessage({ ok: false, text: String(e) }))}>Open folder</Btn>
             </Row>
-          )}
-          {more.length > 0 && (
-            <div className="py-3.5">
-              <div className="text-[15px] font-medium">More Piper voices</div>
-              <div className="text-[12px] text-white/45">Free Piper voices, downloaded once and then used offline</div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {more.map((c) => {
-                  const busy = download?.id === c.id;
-                  const pct = busy && download?.total ? Math.round((download.received / download.total) * 100) : null;
-                  return (
-                    <div key={c.id} className="flex items-center justify-between gap-3 rounded-[10px] border border-white/10 bg-black/40 px-3 py-2">
-                      <div className="min-w-0">
-                        <div className="text-[14px]">{c.name}</div>
-                        <div className="text-[12px] text-white/45">
-                          {c.accent} · {c.sizeMb} MB
-                        </div>
-                      </div>
-                      <Btn onClick={() => getVoice(c)} disabled={download != null}>
-                        {busy ? (pct != null ? `${pct}%` : "Starting…") : "Download"}
-                      </Btn>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           )}
           <Row label="Volume">
             <Slider value={v.volume} min={0} max={1} step={0.05} onChange={(x) => update((s) => void (s.voice.volume = x))} />

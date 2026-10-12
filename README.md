@@ -41,7 +41,7 @@ ApexNorth connects to your PlayStation over Wi-Fi and turns Gran Turismo 7's tel
 | **Drive** | A real-time dashboard with shift lights, live delta to your best lap, tyre temperatures, fuel and pit strategy. |
 | **Record** | Every lap is saved at 30 Hz with five sector splits. Tracks and cars are named automatically. |
 | **Analyse** | Replay any lap on a track map and compare it against any other lap, with synced speed, throttle, brake and gear traces. |
-| **Listen** | A built-in offline voice engineer ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) and [Piper](https://github.com/rhasspy/piper) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. |
+| **Listen** | A built-in offline voice engineer ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. |
 
 The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster. See the [roadmap](#roadmap-phases--milestones).
 
@@ -131,17 +131,13 @@ If it can't find the console:
 
 ## Race engineer voice
 
-The voice is built in: ApexNorth ships a voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) with two kinds of voices, so callouts work straight after installing:
-
-- **[Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)** (the default): natural-sounding voices under the Apache-2.0 license. Three are picked out: **Michael** (American male, the default), **Heart** (American female) and **George** (British male). Nineteen more English Kokoro voices are in the list too, American and British, no download needed.
-- **[Piper](https://github.com/rhasspy/piper):** the **Ryan** voice, lighter and quicker on older computers.
+The voice is built in: ApexNorth ships a voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) and the **[Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)** voices, natural-sounding and under the Apache-2.0 license, so callouts work straight after installing. Three are picked out: **Michael** (American male, the default), **Heart** (American female) and **George** (British male). Nineteen more English Kokoro voices are in the list too, American and British, no download needed.
 
 It runs in a small helper program, `apexnorth-voice` (GPL-3.0, source in [`src-tauri/voice-helper`](src-tauri/voice-helper)), that keeps the voice loaded in memory: a new phrase takes a fraction of a second, repeated callouts play instantly from a cache, and if the voice engine ever crashes the app carries on and restarts it.
 
 In **Settings → Race engineer voice**:
-- **Voice:** pick any Kokoro or Piper voice from the list.
-- **More Piper voices:** download Alan (British), Northern English, Lessac or Amy with one click. They're fetched once from [Piper voices](https://huggingface.co/rhasspy/piper-voices) and then work offline.
-- **Your own voices:** press **Open folder** and drop them into the app's `voices` folder, or choose a file with **Browse…**. Kokoro voice files (`.pt` as published on Hugging Face, `.npy`, or a raw 510×256 float32 `.bin`) are spoken by the bundled Kokoro model; a name starting `bf_`/`bm_` gets a British accent. Any Piper voice works too (`.onnx` with its `.onnx.json` next to it).
+- **Voice:** pick any voice from the list.
+- **Your own voices:** press **Open folder** and drop them into the app's `voices` folder, or choose a file with **Browse…**. Kokoro voice files (`.pt` as published on Hugging Face, `.npy`, or a raw 510×256 float32 `.bin`) are spoken by the bundled Kokoro model; a name starting `bf_`/`bm_` gets a British accent. Your own [Piper](https://github.com/rhasspy/piper) voice works too (`.onnx` with its `.onnx.json` next to it); check its license, as the published Piper voices are trained on noncommercial or research-only recordings, which is why ApexNorth no longer ships or offers them.
 - Press **Test voice** to hear it.
 
 If the voice can't play, the dashboard shows a red **Voice off** line explaining why.
@@ -194,7 +190,7 @@ If the voice can't play, the dashboard shows a red **Voice off** line explaining
 - Sector filter (All, or S1–S5) zooms both the charts and the map.
 
 ### Race engineer voice
-Callouts are spoken offline with the built-in Kokoro or Piper voices. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
+Callouts are spoken offline with the built-in Kokoro voices. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
 
 Set your name in **Settings** and the engineer uses it ("Good luck out there, Michael.").
 
@@ -243,7 +239,7 @@ PS5/PS4 ──UDP 33740──▶ telemetry/udp.rs   heartbeat + discovery + rece
                          ├─▶ storage (SQLite + zstd lap blobs) ◀─ Activity / Lap Analysis
                          └─▶ engineer/rules.rs   what to say (structured calls)
                                └─ director.rs    chatter level, toggles, anti-nag, timing
-                                    └─ voice.rs  apexnorth-voice helper (Piper) → WAV cache → rodio
+                                    └─ voice.rs  apexnorth-voice helper (Kokoro) → WAV cache → rodio
 ```
 
 - All the heavy work happens in Rust: decrypting, lap logic, recording and callouts. The UI only renders.
@@ -312,7 +308,7 @@ src-tauri/src/
     phrases.rs           phrase variation, spoken numbers
     voice_helper.rs      runs the apexnorth-voice helper and talks to it over a pipe
     voice.rs             synthesis, WAV cache, playback queue
-src-tauri/voice-helper/  apexnorth-voice (GPL-3.0): sherpa-onnx + espeak-ng, Piper voices kept loaded
+src-tauri/voice-helper/  apexnorth-voice (GPL-3.0): sherpa-onnx + espeak-ng, Kokoro voice kept loaded
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
   components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, Art, Flag, icons
@@ -332,7 +328,7 @@ You need [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) 20+, 
 git clone https://github.com/ElevenNorthCo/ApexNorth.git
 cd ApexNorth
 npm install
-python3 scripts/fetch-voice.py   # built-in voice: helper, engine, espeak-ng data, Ryan, Kokoro (~520 MB, once)
+python3 scripts/fetch-voice.py   # built-in voice: helper, engine, espeak-ng data, Kokoro (~400 MB, once)
 npm run tauri dev                # app with hot reload
 cd src-tauri && cargo test       # Rust unit tests
 npx tsc --noEmit                 # type-check the frontend
@@ -440,6 +436,7 @@ The tests cover:
 - [x] Voice kept loaded in memory, so new callouts are near-instant (was about 2.5 s for an uncached phrase)
 - [x] Four more voices (Alan, Northern English, Lessac, Amy) downloadable with one click in Settings
 - [x] Kokoro voices built in (Apache-2.0) and the new default: Michael, Heart and George picked out, 19 more English voices in the list, and your own Kokoro voice files (`.pt`, `.npy`) from the voices folder
+- [x] Ryan and the downloadable Piper voices removed: their training data is noncommercial or research-only. Only Kokoro ships now
 - [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars (verified live on PS5, 2026-10-03)
 - [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch (verified live on PS5, 2026-10-03)
 - [ ] Track database extras: real outlines and track-specific sectors
@@ -481,7 +478,7 @@ The tests cover:
 
 ## Credits
 - Protocol research: [Nenkai/PDTools](https://github.com/Nenkai/PDTools), [Bornhall/gt7telemetry](https://github.com/Bornhall/gt7telemetry), and the [GTPlanet telemetry thread](https://www.gtplanet.net/forum/threads/overview-of-gt7-telemetry-software.418011/).
-- Voice: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0) and [Piper](https://github.com/rhasspy/piper) voices, run with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0), [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT) and [espeak-ng](https://github.com/espeak-ng/espeak-ng) (GPL-3.0). Each voice's model card lists its dataset and license.
+- Voice: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0), run with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0), [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT) and [espeak-ng](https://github.com/espeak-ng/espeak-ng) (GPL-3.0).
 - Car list: [ddm999/gt7info](https://github.com/ddm999/gt7info) (MIT-0).
 - Track catalog and reference lines: [jbhoorasingh/gt7-datalogger-track-data](https://github.com/jbhoorasingh/gt7-datalogger-track-data) (CC0), built on captures from [zetetos/gt-telemetry](https://github.com/zetetos/gt-telemetry) (MIT). Test laps from [vthinsel/GT7Tracks](https://github.com/vthinsel/GT7Tracks) (MIT).
 

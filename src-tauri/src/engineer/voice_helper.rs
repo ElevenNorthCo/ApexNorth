@@ -160,15 +160,14 @@ mod tests {
         (s.len() as f32 / rate, rms)
     }
 
-    /// The real helper speaks every bundled Piper voice and the featured
-    /// Kokoro voices (run in CI on each OS).
+    /// The real helper speaks the featured Kokoro voices, and any Piper voice
+    /// in the bundle's `voices/` (none ship now; run in CI on each OS).
     #[test]
     #[ignore]
     fn speaks_with_the_bundled_voice() {
         let dir = test_dir();
         assert!(runtime_present(&dir), "no voice helper in {}", dir.display());
         let voices = crate::settings::find_voices(&[dir.join("voices")]);
-        assert!(!voices.is_empty(), "no voices in {}", dir.display());
         let tmp = std::env::temp_dir().join(format!("apexnorth-voice-test-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let mut h = VoiceHelper::start(&dir).unwrap();

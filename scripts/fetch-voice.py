@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the built-in voice engine and the bundled voices into
+"""Download the built-in voice engine and the Kokoro voices into
 src-tauri/resources/tts, so `tauri build` ships them and nobody has to
 install anything.
 
@@ -10,7 +10,6 @@ What lands in resources/tts:
     apexnorth-voice  the voice helper (src-tauri/voice-helper, built with cargo)
     lib/             sherpa-onnx C API + ONNX Runtime for the target (from npm)
     espeak-ng-data/  phoneme data for espeak-ng
-    voices/          the bundled Piper voice (.onnx + .onnx.json)
     kokoro/          the Kokoro model with its speakers (voices.bin) and the
                      files sherpa-onnx needs to load it
     NOTICE.txt       where each part comes from, and its license
@@ -120,27 +119,6 @@ def fetch_espeak():
         sys.exit("espeak-ng data download failed")
 
 
-def fetch_voice(voice_id):
-    v = next(v for v in CATALOG["voices"] if v["id"] == voice_id)
-    dest = OUT / "voices"
-    dest.mkdir(parents=True, exist_ok=True)
-    model, cfg = dest / f"{voice_id}.onnx", dest / f"{voice_id}.onnx.json"
-    if model.is_file() and cfg.is_file():
-        print(f"voice {voice_id}: already there")
-        return
-    print(f"voice {voice_id}")
-    base = f"{CATALOG['source']}/{v['path']}/{voice_id}"
-    cfg.write_bytes(get(f"{base}.onnx.json"))
-    part = dest / f"{voice_id}.onnx.part"
-    part.write_bytes(get(f"{base}.onnx"))
-    part.replace(model)
-    card = dest / f"{voice_id}.MODEL_CARD.txt"
-    try:
-        card.write_bytes(get(f"{CATALOG['source']}/{v['path']}/MODEL_CARD"))
-    except Exception as e:  # noqa: BLE001
-        print(f"  no model card ({e})")
-
-
 # What the voice helper loads from the Kokoro package (it shares the top-level
 # espeak-ng-data, which is the same). dict/ is jieba's dictionary: only used for
 # Chinese, but sherpa-onnx won't load a multi-language Kokoro model without it.
@@ -185,23 +163,6 @@ def build_helper(target):
     shutil.copy2(ROOT / "src-tauri" / "voice-helper" / "COPYING", OUT / "COPYING-apexnorth-voice.txt")
 
 
-def check_catalog():
-    """Every downloadable voice must exist (run in CI)."""
-    bad = []
-    for v in CATALOG["voices"]:
-        for ext in (".onnx", ".onnx.json"):
-            url = f"{CATALOG['source']}/{v['path']}/{v['id']}{ext}"
-            req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "apexnorth-fetch-voice"})
-            try:
-                with urllib.request.urlopen(req, timeout=60) as r:
-                    print(f"  ok {r.status} {url}")
-            except Exception as e:  # noqa: BLE001
-                print(f"  MISSING {url}: {e}")
-                bad.append(url)
-    if bad:
-        sys.exit(f"{len(bad)} catalog voice file(s) missing")
-
-
 NOTICE = """ApexNorth built-in voice
 ========================
 
@@ -213,8 +174,6 @@ lib/             sherpa-onnx {ver} (Apache-2.0) https://github.com/k2-fsa/sherpa
                  with ONNX Runtime (MIT) https://github.com/microsoft/onnxruntime
                  and espeak-ng (GPL-3.0) https://github.com/espeak-ng/espeak-ng
 espeak-ng-data/  espeak-ng phoneme data (GPL-3.0)
-voices/          Piper voices https://github.com/rhasspy/piper
-                 Each voice's MODEL_CARD lists its dataset and license.
 kokoro/          Kokoro-82M v1.0 by hexgrad (Apache-2.0, kokoro/LICENSE), model and voices:
                  https://huggingface.co/hexgrad/Kokoro-82M
                  converted to ONNX by the sherpa-onnx project (Apache-2.0)
@@ -226,17 +185,11 @@ kokoro/dict/     jieba dictionary (MIT) https://github.com/yanyiwu/cppjieba,
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", default=host_target(), choices=sorted(TARGETS))
-    ap.add_argument("--voice", default=CATALOG["bundled"])
-    ap.add_argument("--check-catalog", action="store_true", help="only check that every catalog voice can be downloaded")
     ap.add_argument("--no-helper", action="store_true", help="skip building the voice helper")
     a = ap.parse_args()
-    if a.check_catalog:
-        check_catalog()
-        return
     OUT.mkdir(parents=True, exist_ok=True)
     fetch_libs(a.target)
     fetch_espeak()
-    fetch_voice(a.voice)
     fetch_kokoro()
     if not a.no_helper:
         build_helper(a.target)

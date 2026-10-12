@@ -1,6 +1,4 @@
 {
-  "source": "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0",
-  "bundled": "en_US-ryan-high",
   "kokoro": {
     "package": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
     "sha256": "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298",
@@ -29,12 +27,5 @@
       { "id": "bm_lewis", "name": "Lewis", "accent": "British", "gender": "male" },
       { "id": "bm_daniel", "name": "Daniel", "accent": "British", "gender": "male" }
     ]
-  },
-  "voices": [
-    { "id": "en_US-ryan-high", "name": "Ryan", "accent": "American", "path": "en/en_US/ryan/high", "sizeMb": 116 },
-    { "id": "en_GB-alan-medium", "name": "Alan", "accent": "British", "path": "en/en_GB/alan/medium", "sizeMb": 61 },
-    { "id": "en_GB-northern_english_male-medium", "name": "Northern", "accent": "Northern English", "path": "en/en_GB/northern_english_male/medium", "sizeMb": 61 },
-    { "id": "en_US-lessac-medium", "name": "Lessac", "accent": "American", "path": "en/en_US/lessac/medium", "sizeMb": 61 },
-    { "id": "en_US-amy-medium", "name": "Amy", "accent": "American", "path": "en/en_US/amy/medium", "sizeMb": 61 }
-  ]
+  }
 }

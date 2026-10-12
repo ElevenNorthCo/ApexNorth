@@ -130,7 +130,8 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         setLap(l);
         const [own, track] = await Promise.all([
           api.sessionLaps(l.sessionId),
-          l.trackId != null ? api.trackLaps(l.trackId) : Promise.resolve([]),
+          // Only the same car on the same track is a fair comparison.
+          l.trackId != null ? api.trackLaps(l.trackId, l.carCode) : Promise.resolve([]),
         ]);
         const seen = new Set<number>([l.id]);
         const merged = [...own.filter((o) => o.isValid), ...track].filter((o) => !seen.has(o.id) && seen.add(o.id));

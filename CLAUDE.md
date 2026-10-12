@@ -7,7 +7,7 @@ The README has the full feature list, the protocol details, and the **phase road
 ## Commands
 
 ```bash
-python3 scripts/fetch-voice.py    # once: built-in voices (Piper Ryan + Kokoro, ~520 MB) into src-tauri/resources/tts (git-ignored)
+python3 scripts/fetch-voice.py    # once: built-in voice engine + Kokoro (~400 MB) into src-tauri/resources/tts (git-ignored)
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
 cd src-tauri && cargo test        # Rust unit tests (fast, ~64 tests)
 npx tsc --noEmit                  # type-check the frontend
@@ -121,8 +121,9 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 ## Built-in voice & releases
 - **GPL boundary:** espeak-ng (inside the sherpa-onnx library) is GPL-3.0, so it is only ever loaded by the separate helper program `src-tauri/voice-helper` (`apexnorth-voice`, GPL-3.0-or-later, its own Cargo workspace). The app (PolyForm) must never link or `dlopen` sherpa/espeak itself; it starts the helper and sends `{"op":"load"|"speak"}` lines (see the helper's `main.rs`). A helper crash only stops the voice; `Speaker` restarts it.
 - `voice-helper/src/tts.rs` loads sherpa-onnx **1.12.9** (`#[repr(C)]` structs must match that version's `c-api.h`; the npm packages `sherpa-onnx-<platform>@1.12.9` carry the libraries). Piper voices (`.onnx` + `.onnx.json`) are prepared once into the cache: metadata appended to the ONNX protobuf (field 14) and `tokens.txt` from the phoneme map (single-character tokens only: sherpa calls `exit()` on a bad token file, so validate before `SherpaOnnxCreateOfflineTts`).
-- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`apexnorth-voice` built with cargo, `lib/`, `espeak-ng-data/`, `voices/en_US-ryan-high`, `kokoro/`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
-- `src-tauri/voices.json` is the voice catalog (bundled + 4 downloadable from HuggingFace `rhasspy/piper-voices` v1.0.0), read by Rust and the fetch script.
+- `scripts/fetch-voice.py --target <rust triple>` fills `src-tauri/resources/tts/` (`apexnorth-voice` built with cargo, `lib/`, `espeak-ng-data/`, `kokoro/`). Bundled via `bundle.resources` → `tts/`; `voices::builtin_dir` finds it (resources, then the source tree in debug).
+- `src-tauri/voices.json` is the Kokoro voice catalog (package URL + SHA-256, default, the listed speakers), read by Rust and the fetch script.
+- **No Piper voices ship or download** (removed 2026-10-11 at the user's request). Ryan's data is CC BY-NC-SA, and Alan, Northern English, Lessac and Amy are all fine-tuned from Lessac (research-only licence; Alan's own data is "All Rights Reserved"). The Piper engine path stays for voices users add themselves. Don't add Piper voices back without checking the dataset *and* the base model they were fine-tuned from.
 - **Kokoro** (the default voice engine, user's choice 2026-10-11): Kokoro-82M v1.0, Apache-2.0, sherpa's fp32 `kokoro-multi-lang-v1_0` package (SHA-256 pinned in `voices.json`) unpacked by `fetch-voice.py` into `resources/tts/kokoro/` (`model.onnx`, `voices.bin` with 54 speakers, `tokens.txt`, `dict/`, `LICENSE`).
   - fp32, not int8: on the user's Intel i7-9750H (no VNNI), int8 ran about 1.4× slower than real time and fp32 about 0.45× (a short callout in about 0.6 s). It costs about 325 MB in the bundle.
   - The voice setting (`voice.modelPath`) is one string: a Piper `.onnx` path, `kokoro:<speaker>` (e.g. `kokoro:am_michael`), or a Kokoro voice file path (`.pt`/`.pth`/`.npy`, or a `.bin` of exactly 510×256 float32). `voices::VoiceRef::parse` decides. New installs, and any missing voice, default to `kokoro:am_michael`. Existing choices are kept.
@@ -152,7 +153,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
 - The user's PS5 is at 192.168.12.194, saved in settings as `lastIp`. They test live on the PS5.
 - Piper:
   - The CLI is `~/.local/bin/piper` (Python, pipx), only used when the built-in voice isn't fetched. It takes about 2.5 s per new phrase.
-  - Voices are in `~/Projects/ElevenNorth/PiperTest/models` (`en_US-ryan-high` is selected).
+  - Voices are in `~/Projects/ElevenNorth/PiperTest/models`. The app now uses Kokoro (the user was on `kokoro:bm_fable` on 2026-10-11).
 - App data is in `~/Library/Application Support/com.elevennorth.apexnorth/` (`apexnorth.db`, `settings.json`, `voices/`).
 
 ## License

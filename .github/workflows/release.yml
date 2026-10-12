@@ -142,14 +142,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Built-in voice (helper, engine, espeak-ng data, voice)
+      - name: Built-in voice (helper, engine, espeak-ng data, Kokoro)
         run: python scripts/fetch-voice.py --target ${{ matrix.target }}
 
-      - name: Check the downloadable voices exist
-        if: runner.os == 'Linux'
-        run: python scripts/fetch-voice.py --check-catalog
-
-      - name: Voice test (the bundled voice speaks)
+      - name: Voice test (the Kokoro voices speak)
         if: matrix.voice_test
         working-directory: src-tauri
         run: cargo test --target ${{ matrix.target }} speaks_with_the_bundled_voice -- --ignored --nocapture

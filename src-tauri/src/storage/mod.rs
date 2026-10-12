@@ -522,16 +522,17 @@ impl Db {
         rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
-    /// Valid laps on the same track (any session), fastest first, for comparison.
-    pub fn track_laps(&self, track_id: i64, limit: i64) -> Result<Vec<LapSummary>> {
+    /// Valid laps with the same car on the same track (any session), fastest
+    /// first, for comparison. Another car's lap isn't a fair reference.
+    pub fn track_laps(&self, track_id: i64, car_code: i32, limit: i64) -> Result<Vec<LapSummary>> {
         let mut stmt = self
             .conn
             .prepare(&format!(
                 "SELECT {LAP_COLS} FROM laps l JOIN sessions s ON s.id = l.session_id
-                 WHERE s.track_id = ?1 AND l.is_valid = 1 ORDER BY l.time_ms LIMIT ?2"
+                 WHERE s.track_id = ?1 AND s.car_code = ?2 AND l.is_valid = 1 ORDER BY l.time_ms LIMIT ?3"
             ))
             .map_err(err)?;
-        let rows = stmt.query_map(params![track_id, limit], lap_row).map_err(err)?;
+        let rows = stmt.query_map(params![track_id, car_code, limit], lap_row).map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
@@ -749,6 +750,14 @@ mod tests {
         assert_eq!(detail.samples.len(), 50);
         assert_eq!(detail.summary.sectors_ms, vec![1, 2, 3, 4, 5]);
         assert_eq!(db.best_lap_for(t.id, 1234).unwrap().unwrap().0, 95_000);
+        // Comparison laps: the same car on the same track only.
+        let other_car = db.create_session(9999, 5, 3).unwrap();
+        db.set_session_track(other_car, t.id).unwrap();
+        db.insert_lap(other_car, &lap(80_000, true)).unwrap();
+        let ids = |car| db.track_laps(t.id, car, 20).unwrap().iter().map(|l| l.time_ms).collect::<Vec<_>>();
+        assert_eq!(ids(1234), [95_000]);
+        assert_eq!(ids(9999), [80_000]);
+        db.delete_session(other_car).unwrap();
         db.delete_session(s).unwrap();
         assert!(db.list_sessions().unwrap().is_empty());
     }

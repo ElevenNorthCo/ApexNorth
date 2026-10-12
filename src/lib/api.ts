@@ -215,7 +215,8 @@ export const api = {
   localIps: () => invoke<string[]>("local_ips"),
   listSessions: () => invoke<SessionSummary[]>("list_sessions"),
   sessionLaps: (sessionId: number) => invoke<LapSummary[]>("session_laps", { sessionId }),
-  trackLaps: (trackId: number) => invoke<LapSummary[]>("track_laps", { trackId }),
+  /** Valid laps with this car on this track, fastest first. */
+  trackLaps: (trackId: number, carCode: number) => invoke<LapSummary[]>("track_laps", { trackId, carCode }),
   getLap: (lapId: number) => invoke<LapDetail>("get_lap", { lapId }),
   deleteSession: (sessionId: number) => invoke<void>("delete_session", { sessionId }),
   setSessionKind: (sessionId: number, kind: SessionKind | null) => invoke<void>("set_session_kind", { sessionId, kind }),
@@ -230,9 +231,6 @@ export const api = {
   testVoice: (text: string) => invoke<void>("test_voice", { text }),
   /** True when the app ships its own voice engine (no Piper install needed). */
   voiceBuiltin: () => invoke<boolean>("voice_builtin"),
-  voiceCatalog: () => invoke<CatalogVoice[]>("voice_catalog"),
-  /** Downloads a catalog voice; progress arrives as "voice_download" events. Returns the model path. */
-  downloadVoice: (id: string) => invoke<string>("download_voice", { id }),
 };
 
 /** A voice to choose in Settings. `value` goes into `settings.voice.modelPath`. */
@@ -241,21 +239,4 @@ export interface VoiceOption {
   label: string;
   /** Bundled Kokoro voices ("kokoro" are the featured three), Kokoro voice files the user added, or Piper voices. */
   group: "kokoro" | "kokoroMore" | "custom" | "piper";
-}
-
-/** A Piper voice from the built-in catalog (`src-tauri/voices.json`). */
-export interface CatalogVoice {
-  id: string;
-  name: string;
-  accent: string;
-  sizeMb: number;
-  bundled: boolean;
-  /** Model path once it's on disk. */
-  path: string | null;
-}
-
-export interface VoiceDownload {
-  id: string;
-  received: number;
-  total: number | null;
 }
