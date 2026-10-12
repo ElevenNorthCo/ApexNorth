@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type ConnState = "idle" | "searching" | "connecting" | "live" | "lost" | "error";
 export type Variant = "A" | "B" | "Tilde";
@@ -206,7 +206,25 @@ export interface Settings {
   };
 }
 
+export interface UpdateInfo {
+  /** "0.3.0", or "0.3.0 beta 42" on the beta channel. */
+  version: string;
+  notes: string | null;
+}
+
+export type UpdateProgress =
+  | { event: "started"; total: number | null }
+  | { event: "downloading"; done: number; total: number | null }
+  | { event: "installing" };
+
 export const api = {
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  /** Downloads and installs, then the app restarts (the promise only settles on failure). */
+  installUpdate: (onProgress: (p: UpdateProgress) => void) => {
+    const progress = new Channel<UpdateProgress>();
+    progress.onmessage = onProgress;
+    return invoke<void>("install_update", { progress });
+  },
   connect: (ip?: string) => invoke<void>("connect", { ip: ip ?? null }),
   startDemo: () => invoke<void>("start_demo"),
   disconnect: () => invoke<void>("disconnect"),

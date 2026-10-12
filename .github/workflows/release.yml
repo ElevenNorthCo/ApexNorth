@@ -12,6 +12,9 @@
 #   By hand:  push a version tag (git tag v0.2.0 && git push origin v0.2.0;
 #             a dash, v0.2.0-beta.1, makes a pre-release), or Actions → Release
 #             → Run workflow with a version (empty = build only).
+#   In-app updates: every build is signed with the updater key (secrets
+#             TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]) and the release gets a
+#             latest.json (scripts/update-feed.py) that the app checks.
 #   Test run: push a commit to any branch whose message contains
 #             [build installers] (builds, no release; the installers are
 #             attached to the run as artifacts)
@@ -44,6 +47,7 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       tag: ${{ steps.plan.outputs.tag }}
       app: ${{ steps.plan.outputs.app }}
+      channel: ${{ steps.plan.outputs.channel }}
     steps:
       - uses: actions/checkout@v4
       - id: plan
@@ -74,6 +78,10 @@ jobs:
           # Installers want plain x.y.z; a beta suffix only goes on the release.
           app="$version"
           [[ "$tag" == v* ]] && app="${tag#v}" && app="${app%%-*}"
+          # Beta builds check the beta-latest update feed, stable builds Latest's.
+          channel=stable
+          [[ "$tag" == beta-latest ]] && channel=beta
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "app=$app" >> "$GITHUB_OUTPUT"
@@ -151,18 +159,36 @@ jobs:
         run: cargo test --target ${{ matrix.target }} speaks_with_the_bundled_voice -- --ignored --nocapture
 
       - name: Build
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config '{"version":"${{ needs.plan.outputs.app }}"}'
+        env:
+          # Signs the in-app update files (public key in tauri.conf.json).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Compiled in: which update feed the app reads, and its beta build number.
+          APEXNORTH_CHANNEL: ${{ needs.plan.outputs.channel }}
+          APEXNORTH_BUILD: ${{ github.run_number }}
+          APP_VERSION: ${{ needs.plan.outputs.app }}
+        run: |
+          updater=false
+          [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]] && updater=true
+          npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} \
+            --config "{\"version\":\"$APP_VERSION\",\"bundle\":{\"createUpdaterArtifacts\":$updater}}"
 
       - name: Collect installers
         run: |
           b=src-tauri/target/${{ matrix.target }}/release/bundle
           mkdir -p out
+          # Copies a file and, when the build was signed, its update signature.
+          take() { cp "$1" "out/$2"; [[ -f "$1.sig" ]] && cp "$1.sig" "out/$2.sig"; true; }
           case "${{ matrix.name }}" in
-            macOS-*) cp "$(ls $b/dmg/*.dmg | head -1)" "out/ApexNorth-${{ matrix.name }}.dmg" ;;
-            Windows) cp "$(ls $b/nsis/*-setup.exe | head -1)" "out/ApexNorth-Windows-Setup.exe" ;;
+            macOS-*)
+              take "$(ls $b/dmg/*.dmg | head -1)" "ApexNorth-${{ matrix.name }}.dmg"
+              # The in-app update for macOS is the zipped .app, not the dmg.
+              tgz="$(ls $b/macos/*.app.tar.gz 2>/dev/null | head -1)"
+              [[ -n "$tgz" ]] && take "$tgz" "ApexNorth-${{ matrix.name }}.app.tar.gz" ;;
+            Windows) take "$(ls $b/nsis/*-setup.exe | head -1)" "ApexNorth-Windows-Setup.exe" ;;
             Linux)
-              cp "$(ls $b/appimage/*.AppImage | head -1)" "out/ApexNorth-Linux.AppImage"
-              cp "$(ls $b/deb/*.deb | head -1)" "out/ApexNorth-Linux.deb" ;;
+              take "$(ls $b/appimage/*.AppImage | head -1)" "ApexNorth-Linux.AppImage"
+              take "$(ls $b/deb/*.deb | head -1)" "ApexNorth-Linux.deb" ;;
           esac
           ls -la out
 
@@ -206,6 +232,10 @@ jobs:
           else
             cp .github/release-notes.md notes.md
           fi
+      - name: Update feed (latest.json)
+        env:
+          VERSION: ${{ needs.plan.outputs.channel == 'beta' && format('{0}+beta.{1}', needs.plan.outputs.app, github.run_number) || needs.plan.outputs.app }}
+        run: python3 scripts/update-feed.py out "$VERSION" "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
       - uses: softprops/action-gh-release@v2
         with:
           # Creates the tag on this commit when it doesn't exist yet.

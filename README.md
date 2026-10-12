@@ -103,11 +103,13 @@ Not sure which Mac you have? Click the Apple menu → **About This Mac**. "Chip:
 
 ### Updates
 
-When a new version is out, an **Update** button appears in the top bar. Click it to open the download page, or run the install command again.
+When a new version is out, an **Update** button appears in the top bar. Click it: the button fills as the update downloads, then ApexNorth installs it and restarts on the new version. Updates are signed, and the app only installs one carrying ApexNorth's signature. On Windows a small installer window shows for a few seconds; on Linux the `.deb` asks for your password.
+
+If an update can't install, the button turns orange and opens the download page instead. You can always run the install command again too. Versions before 0.3.0 can't update themselves yet: their **Update** button opens the download page, and after that one manual update the next ones install in the app.
 
 ### Beta (test builds)
 
-Want the newest features before they're released? The [**beta**](https://github.com/ElevenNorthCo/ApexNorth/releases/tag/beta-latest) always has the latest test build, with the same installers. It may have bugs. The Update button only ever offers regular releases, so you go back by installing the [latest release](https://github.com/ElevenNorthCo/ApexNorth/releases/latest).
+Want the newest features before they're released? The [**beta**](https://github.com/ElevenNorthCo/ApexNorth/releases/tag/beta-latest) always has the latest test build, with the same installers. It may have bugs. A beta build updates itself to each newer beta; a regular release only ever updates to regular releases. To go back, install the [latest release](https://github.com/ElevenNorthCo/ApexNorth/releases/latest).
 
 ### Then
 
@@ -348,6 +350,8 @@ Without `fetch-voice.py` the app still runs, and falls back to a `piper` program
 
 About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. The update button and install commands skip pre-releases.
 
+Each build is also signed for in-app updates with the project's updater key (repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`). The release gets a `latest.json` ([`scripts/update-feed.py`](scripts/update-feed.py)) that the app checks: the Latest release's for regular builds, `beta-latest`'s for beta builds. Local builds skip the signing.
+
 The tests cover:
 - crypto round-trips for all three packet variants
 - packet parsing
@@ -448,7 +452,9 @@ The tests cover:
 - [ ] Pre-race strategy briefing (fuel needed, planned stops)
 - [x] GitHub Actions builds installers for macOS (Apple Silicon + Intel), Windows and Linux, with a voice test on each OS
 - [x] One-line install commands (`install.sh`, `install.ps1`) and an in-app **Update** button when a new release is out
-- [ ] Signed auto-update (download and install inside the app), and Apple/Windows code signing
+- [x] Signed in-app updates: click **Update**, watch it download, and the app restarts on the new version (stable and beta channels)
+- [ ] Smaller updates: download the voice once instead of with every update
+- [ ] Apple/Windows code signing
 - [x] App icon and branding
 - [x] Website: [apexnorth.app](https://apexnorth.app)
 - [x] **Milestone:** 0.2.0, the first release with Kokoro voices and the beta channel

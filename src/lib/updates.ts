@@ -1,17 +1,16 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { api, type UpdateInfo } from "./api";
 
-/** Where releases are published (GitHub Actions builds them from version tags). */
+/** Where releases are published, for when an update can't install itself. */
 export const REPO = "ElevenNorthCo/ApexNorth";
 export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
-export interface Update {
-  version: string;
-  url: string;
-}
+/** An update to offer: `manual` ones open the download page instead of installing. */
+export type Offer = UpdateInfo & { manual?: boolean };
 
-/** "v0.2.1" / "0.2.1" → [0, 2, 1]; anything after a "-" (betas) is ignored. */
+/** "v0.2.1" / "0.2.1" → [0, 2, 1]; anything after a "-" or "+" is ignored. */
 function parts(v: string): number[] {
-  return v.replace(/^v/, "").split("-")[0].split(".").map((n) => Number(n) || 0);
+  return v.replace(/^v/, "").split(/[-+ ]/)[0].split(".").map((n) => Number(n) || 0);
 }
 
 export function newer(latest: string, current: string): boolean {
@@ -24,19 +23,26 @@ export function newer(latest: string, current: string): boolean {
 }
 
 /**
- * The latest published release, if it's newer than this app. Quietly null
- * when offline, rate-limited, or the repo isn't public yet.
+ * A newer release, if there is one. The signed in-app update comes first. If
+ * that check fails (no update feed on the release, a network hiccup), the
+ * GitHub releases list is the fallback, so nobody silently misses a release:
+ * the button then opens the download page. Quietly null when offline.
  */
-export async function checkForUpdate(): Promise<Update | null> {
+export async function checkForUpdate(): Promise<Offer | null> {
+  try {
+    return await api.checkUpdate();
+  } catch (e) {
+    console.warn("in-app update check failed, falling back to the releases list:", e);
+  }
   try {
     const [current, res] = await Promise.all([
       getVersion(),
       fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } }),
     ]);
     if (!res.ok) return null;
-    const r: { tag_name?: string; html_url?: string; draft?: boolean; prerelease?: boolean } = await res.json();
+    const r: { tag_name?: string; draft?: boolean; prerelease?: boolean } = await res.json();
     if (!r.tag_name || r.draft || r.prerelease || !newer(r.tag_name, current)) return null;
-    return { version: r.tag_name.replace(/^v/, ""), url: r.html_url ?? RELEASES_URL };
+    return { version: r.tag_name.replace(/^v/, ""), notes: null, manual: true };
   } catch {
     return null;
   }

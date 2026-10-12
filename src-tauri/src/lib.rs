@@ -4,6 +4,7 @@ mod session;
 mod settings;
 mod storage;
 mod telemetry;
+mod updater;
 mod voices;
 
 use parking_lot::{Mutex, RwLock};
@@ -421,11 +422,30 @@ fn voice_builtin(state: State<AppState>) -> bool {
     state.builtin_tts.is_some()
 }
 
+/// A newer signed release for this channel (stable or beta), if there is one.
+#[tauri::command]
+async fn check_update(app: AppHandle, pending: State<'_, updater::Pending>) -> Result<Option<updater::UpdateInfo>, String> {
+    updater::check(&app, &pending).await
+}
+
+/// Download the update found by `check_update`, reporting progress, then
+/// install it and restart.
+#[tauri::command]
+async fn install_update(
+    app: AppHandle,
+    pending: State<'_, updater::Pending>,
+    progress: tauri::ipc::Channel<updater::Progress>,
+) -> Result<(), String> {
+    updater::install(&app, &pending, progress).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Pending::default())
         .setup(|app| {
             let data = app.path().app_data_dir()?;
             let config = app.path().app_config_dir()?;
@@ -527,6 +547,8 @@ pub fn run() {
             list_voices,
             voices_dir,
             test_voice,
+            check_update,
+            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
