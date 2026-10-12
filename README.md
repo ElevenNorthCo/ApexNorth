@@ -40,7 +40,7 @@ ApexNorth connects to your PlayStation over Wi-Fi and turns Gran Turismo 7's tel
 |---|---|
 | **Drive** | A real-time dashboard with shift lights, live delta to your best lap, tyre temperatures, fuel and pit strategy. |
 | **Record** | Every lap is saved at 30 Hz with five sector splits. Tracks and cars are named automatically. |
-| **Analyse** | Replay any lap on a track map and compare it against any other lap, with synced speed, throttle, brake and gear traces. |
+| **Analyse** | Replay any lap on a track map and compare it against your other laps in the same car, with synced speed, throttle, brake and gear traces. |
 | **Listen** | A built-in offline voice engineer ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. |
 
 The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster. See the [roadmap](#roadmap-phases--milestones).
@@ -182,7 +182,7 @@ If the voice can't play, the dashboard shows a red **Voice off** line explaining
 ### Lap analysis & playback
 - A track map showing the track surface, your racing line, sector markers and the car position, with zoom that follows the car and an overview mini-map.
 - **Playback** animates the lap in real time at 1×, 2× or 4×.
-- **Compare** against any lap on the same track, from any session. The laps are matched by position on track, so the ghost car runs at the other lap's real pace:
+- **Compare** against any lap with the same car on the same track, from any session (another car's lap isn't a fair reference). The laps are matched by position on track, so the ghost car runs at the other lap's real pace:
   - sector-by-sector deltas
   - a ghost line and ghost car on the map
   - overlaid traces
@@ -284,7 +284,7 @@ The field offsets are documented in [`src-tauri/src/telemetry/packet.rs`](src-ta
 src-tauri/src/
   lib.rs                 app setup, live packet handler, Tauri commands
   settings.rs            settings, voice discovery
-  voices.rs              bundled voice, downloadable voice catalog (voices.json)
+  voices.rs              Kokoro voice catalog (voices.json), voice files, the voice list
   telemetry/
     crypto.rs            Salsa20 encrypt/decrypt, packet variants
     packet.rs            GT7 packet parser (+ serializer for the simulator)
@@ -415,6 +415,7 @@ The tests cover:
 ### ✅ Phase 3.7: Fixes & race conditions
 - [x] Laps close at the start/finish line: a packet gap at the line is split using the official lap time, instead of leaving a hole and shifting the next lap's timing
 - [x] Lap compare matches the reference lap by position, and the ghost car runs at the same lap time
+- [x] Lap compare only offers laps with the same car on the same track
 - [x] Grab a chart during playback to pause and scrub
 - [x] Open-wheel car on the dashboard tyre panel
 - [x] Activity delta: against your previous best at the track (same car first), or best vs. average on a first visit
@@ -437,6 +438,8 @@ The tests cover:
 - [x] Four more voices (Alan, Northern English, Lessac, Amy) downloadable with one click in Settings
 - [x] Kokoro voices built in (Apache-2.0) and the new default: Michael, Heart and George picked out, 19 more English voices in the list, and your own Kokoro voice files (`.pt`, `.npy`) from the voices folder
 - [x] Ryan and the downloadable Piper voices removed: their training data is noncommercial or research-only. Only Kokoro ships now
+- [x] **Test voice** plays the whole phrase (status updates while not connected used to cut it off)
+- [x] Beta channel: the `beta` branch publishes a rolling test build ([beta-latest](https://github.com/ElevenNorthCo/ApexNorth/releases/tag/beta-latest)); merging to `main` with a new version publishes the release
 - [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars (verified live on PS5, 2026-10-03)
 - [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch (verified live on PS5, 2026-10-03)
 - [ ] Track database extras: real outlines and track-specific sectors

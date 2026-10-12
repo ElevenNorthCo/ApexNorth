@@ -9,14 +9,14 @@ The README has the full feature list, the protocol details, and the **phase road
 ```bash
 python3 scripts/fetch-voice.py    # once: built-in voice engine + Kokoro (~400 MB) into src-tauri/resources/tts (git-ignored)
 npm run tauri dev                 # run the app (hot reload: UI instantly, Rust triggers a rebuild + restart)
-cd src-tauri && cargo test        # Rust unit tests (fast, ~64 tests)
+cd src-tauri && cargo test        # Rust unit tests (fast, ~77 tests)
 npx tsc --noEmit                  # type-check the frontend
 npm run build                     # frontend production build
 npm run tauri build -- --bundles app,dmg   # macOS release → src-tauri/target/release/bundle/
 ```
 
 Before calling a change done:
-- Run `cargo test` for Rust changes.
+- Run `cargo test` for Rust changes. Voice changes: also `cargo test speaks_with_the_bundled_voice -- --ignored --nocapture` (needs `fetch-voice.py`).
 - Run `npx tsc --noEmit` for frontend changes.
 
 Notes on running and building:
@@ -109,6 +109,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - To add or refresh images: copy the new `.webp` files into `src/assets/cars/` and add their `car_code` → file entries to `carImages.json`. Don't generate or fetch car art.
 - **Race conditions:** `sessions.conditions` (JSON `SessionConditions`: mode offline/online, bop, tyreWear, fuelRate), set with `set_session_conditions` from the Session view; Activity shows them as chips. GT7 sends none of these. `LiveHandler::record_lap` re-reads them each lap and calls `Engine::set_conditions` (wear 0 → no tyre estimate, fuel 0 → no fuel plan, wear N → `Db::tyre_fade_per_wear` × N as a prior in `TyreModel`). Once the track is known, a session with none inherits them from the last session with the same track, car and `total_laps` (`Db::previous_conditions`). Pace comparisons use `conditionsMatch` (`lib/media.ts`): BoP, tyre wear and fuel must agree where both are noted.
 - **Session type:** `sessions.kind` (practice / qualifying / race / time_trial, NULL = inferred from `totalLaps`), set with `set_session_kind`. Activity filters on it; Session view compares best pace per type at that track.
+- **Lap compare** (`views/LapAnalysis.tsx`): options are this session's valid laps plus `Db::track_laps(track, car)`, so only the same car on the same track (the user asked for this; another car's lap made the traces and ghost look "off").
 - **Charts:**
   - Charts use uPlot through `components/TelemetryChart.tsx`.
   - The `series` and `x` arrays must be memoized, or the chart rebuilds.
@@ -132,6 +133,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - sherpa 1.12.9 needs `lang` **and** `dict_dir` (jieba files) for a v1.0 model or it calls `exit()`. It never checks `voices.bin`, so the helper checks its size against the model's `n_speakers × style_dim` metadata (read from the ONNX file without loading it). With `lang` set, English always goes through espeak-ng; the lexicon files aren't used, so they aren't shipped.
   - A voice file is copied into slot 0 of a cached copy of `voices.bin` and spoken as speaker 0. Speakers that share the loaded model and accent switch without a reload; a new accent reloads, which takes about 3–5 s.
   - `max_num_sentences` must be 1 for Kokoro (sherpa warns on every phrase otherwise).
+- **Voice clearing:** `Voice::clear()` drops queued and playing calls (session start/end, a new link, and a drop out of Live in `LiveHandler::status`). The link reports status every second while not live, so clear only on the Live → not-Live change; clearing on every report cut the Settings test phrase off after a second. Test phrases are `outlives_session`.
 - **Release flow** (set up 2026-10-11): new work goes on a feature branch → merged into `beta` and pushed, which publishes the rolling **ApexNorth Beta** pre-release (tag `beta-latest`, replaced each push; link for testers: `releases/tag/beta-latest`) → merged into `main` with the version bumped in `tauri.conf.json`, `package.json` and `Cargo.toml`, which publishes `v<version>` as Latest. A `main` push that keeps an already-released version builds nothing. Bump the version when a branch is headed for `main`.
 - `.github/workflows/release.yml`: a `plan` job decides what to build and publish (see the comment at the top). Tag `v*` → 4 installers with fixed names (`ApexNorth-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-Setup.exe`, `-Linux.AppImage`/`.deb`), voice smoke test (`speaks_with_the_bundled_voice`, ignored locally) on mac arm64, Windows, Linux, then a GitHub Release. Dash tags are pre-releases. **Actions → Release → Run workflow** with a version publishes too (the release action creates the tag); Claude's sessions can't push tags or dispatch workflows, but a pushed commit whose message contains `[build installers]` builds without publishing. `install.sh` / `install.ps1` download `releases/latest/download/<fixed name>`; `lib/updates.ts` shows the TopBar **Update** button from `releases/latest`. All of these need the repo to be public (it is).
 - macOS builds are ad-hoc signed (`signingIdentity: "-"`, `hardenedRuntime: false` so the bundled dylibs load).
