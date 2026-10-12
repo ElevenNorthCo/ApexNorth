@@ -64,7 +64,7 @@ The long-term goal is a race engineer you can talk to: an AI that reads your tel
 
 ## Install
 
-ApexNorth is free. The easiest way is the website, **[apexnorth.app](https://apexnorth.app)**, which picks the right download for your computer. Or pick **one** of these. Both get the same app, with the race engineer's voice built in.
+ApexNorth is free. More on the website, **[apexnorth.app](https://apexnorth.app)**. Pick **one** of these. Both get the same app, with the race engineer's voice built in.
 
 ### Option 1: one command (easiest)
 
@@ -346,11 +346,7 @@ Without `fetch-voice.py` the app still runs, and falls back to a `piper` program
 - **Release:** bump the version in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, then merge to `main`. If that version has no release yet, it's built and published as `v<version>`, the Latest release. A push to `main` that keeps the version builds nothing.
 - **By hand:** push a tag (`git tag v0.2.0 && git push origin v0.2.0`; a dash, `v0.2.0-beta.1`, makes a pre-release), or on GitHub open **Actions → Release → Run workflow** with a version. Leave the version empty to only build the installers (they're attached to the run).
 
-About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the website and install commands pick them up, and everyone's app shows the **Update** button. The update button and install commands skip pre-releases.
-
-### Website
-
-[apexnorth.app](https://apexnorth.app) is the static page in [`site/`](site), published to GitHub Pages by [`pages.yml`](.github/workflows/pages.yml) on every push to `main` that changes it, the screenshots or the install scripts. Its download buttons point at `releases/latest/download/<installer>`, so a new release needs no website change.
+About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. The update button and install commands skip pre-releases.
 
 The tests cover:
 - crypto round-trips for all three packet variants
@@ -454,8 +450,8 @@ The tests cover:
 - [x] One-line install commands (`install.sh`, `install.ps1`) and an in-app **Update** button when a new release is out
 - [ ] Signed auto-update (download and install inside the app), and Apple/Windows code signing
 - [x] App icon and branding
-- [x] Website: [apexnorth.app](https://apexnorth.app), a landing page with downloads for every OS (picks yours automatically) and the install commands
-- [x] **Milestone:** 0.2.0, the first release with Kokoro voices, the beta channel and the website
+- [x] Website: [apexnorth.app](https://apexnorth.app)
+- [x] **Milestone:** 0.2.0, the first release with Kokoro voices and the beta channel
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application

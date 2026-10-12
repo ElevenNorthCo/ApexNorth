@@ -1,6 +1,6 @@
 ## Install
 
-Easiest: **[apexnorth.app](https://apexnorth.app)** picks the right download for you.
+Website: **[apexnorth.app](https://apexnorth.app)**
 
 | Computer | Download |
 |---|---|
