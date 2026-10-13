@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { api, type Callouts, type ChatterLevel, type Settings, type VoiceOption } from "../lib/api";
+import { api, type BuildInfo, type Callouts, type ChatterLevel, type Settings, type VoiceOption } from "../lib/api";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
 import { Speaker } from "../components/icons";
 import { Brand } from "../components/Brand";
+import { UpdateButton } from "../components/UpdateButton";
+import { useUpdates } from "../lib/updates";
 
 const CALLOUTS: { key: keyof Callouts; label: string; hint: string }[] = [
   { key: "lapTimes", label: "Lap times", hint: "Every lap, personal bests and the final lap" },
@@ -42,6 +44,7 @@ export function SettingsView() {
   const [voicesDir, setVoicesDir] = useState("");
   const [builtin, setBuiltin] = useState(false);
   const [version, setVersion] = useState("");
+  const [build, setBuild] = useState<BuildInfo | null>(null);
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -51,6 +54,7 @@ export function SettingsView() {
     api.voicesDir().then(setVoicesDir);
     api.voiceBuiltin().then(setBuiltin);
     getVersion().then(setVersion);
+    api.buildInfo().then(setBuild);
     // Pick up voice files dropped into the folder while the app was in the background.
     window.addEventListener("focus", loadVoices);
     return () => window.removeEventListener("focus", loadVoices);
@@ -231,6 +235,10 @@ export function SettingsView() {
           ))}
         </Section>
 
+        <Section title="Version & updates" color="var(--color-accent)">
+          <Updates version={version} build={build} />
+        </Section>
+
         <div className="mt-10 flex flex-col items-center gap-2 opacity-60">
           <Brand scale={0.6} />
           <p className="tech text-[11px] text-white/50">
@@ -239,6 +247,36 @@ export function SettingsView() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** This app's version and channel, a manual check, and the update when there is one. */
+function Updates({ version, build }: { version: string; build: BuildInfo | null }) {
+  const offer = useUpdates((s) => s.offer);
+  const check = useUpdates((s) => s.check);
+  const checkNow = useUpdates((s) => s.checkNow);
+  const beta = build?.channel === "beta";
+  const label = `ApexNorth v${version}${beta && build?.build ? ` beta ${build.build}` : ""}`;
+  const channel = beta ? "Beta channel: test builds from the beta branch" : "Stable channel: regular releases";
+  return (
+    <>
+      <Row label={label} hint={channel}>
+        <div className="flex items-center gap-3">
+          {check === "current" && !offer && <span className="tech text-[12px] text-accent">Up to date</span>}
+          <Btn onClick={() => void checkNow()} disabled={check === "checking"}>
+            {check === "checking" ? "Checking…" : "Check for updates"}
+          </Btn>
+        </div>
+      </Row>
+      {offer && (
+        <Row
+          label={`Update available: v${offer.version}`}
+          hint={offer.manual ? "Opens the download page" : (offer.notes ?? "Downloads, installs and restarts the app")}
+        >
+          <UpdateButton />
+        </Row>
+      )}
+    </>
   );
 }
 

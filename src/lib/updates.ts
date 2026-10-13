@@ -1,4 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { create } from "zustand";
 import { api, type UpdateInfo } from "./api";
 
 /** Where releases are published, for when an update can't install itself. */
@@ -47,3 +49,51 @@ export async function checkForUpdate(): Promise<Offer | null> {
     return null;
   }
 }
+
+export type Install =
+  | { step: "ready" }
+  | { step: "downloading"; pct: number | null }
+  | { step: "installing" }
+  | { step: "failed"; error: string };
+
+interface Updates {
+  /** The newer release, if the last check found one. */
+  offer: Offer | null;
+  /** "current" = the last check found nothing newer. */
+  check: "idle" | "checking" | "current";
+  install: Install;
+  /** Ask the feed again. Shared by the TopBar's timer and Settings' button. */
+  checkNow: () => Promise<void>;
+  /** Download, install and restart; a failed or manual update opens the download page. */
+  installNow: () => void;
+}
+
+export const useUpdates = create<Updates>((set, get) => ({
+  offer: null,
+  check: "idle",
+  install: { step: "ready" },
+  checkNow: async () => {
+    const { check, install } = get();
+    if (check === "checking" || install.step === "downloading" || install.step === "installing") return;
+    set({ check: "checking" });
+    const offer = await checkForUpdate();
+    set({ offer, check: offer ? "idle" : "current", install: { step: "ready" } });
+  },
+  installNow: () => {
+    const { offer, install } = get();
+    if (!offer) return;
+    if (install.step === "failed" || offer.manual) {
+      openUrl(RELEASES_URL);
+      return;
+    }
+    if (install.step !== "ready") return;
+    set({ install: { step: "downloading", pct: null } });
+    api
+      .installUpdate((p) => {
+        if (p.event === "installing") set({ install: { step: "installing" } });
+        else if (p.event === "downloading")
+          set({ install: { step: "downloading", pct: p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : null } });
+      })
+      .catch((e) => set({ install: { step: "failed", error: String(e) } }));
+  },
+}));

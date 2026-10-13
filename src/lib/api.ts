@@ -212,12 +212,19 @@ export interface UpdateInfo {
   notes: string | null;
 }
 
+export interface BuildInfo {
+  channel: "beta" | "stable";
+  /** Beta build number. */
+  build: number | null;
+}
+
 export type UpdateProgress =
   | { event: "started"; total: number | null }
   | { event: "downloading"; done: number; total: number | null }
   | { event: "installing" };
 
 export const api = {
+  buildInfo: () => invoke<BuildInfo>("build_info"),
   checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
   /** Downloads and installs, then the app restarts (the promise only settles on failure). */
   installUpdate: (onProgress: (p: UpdateProgress) => void) => {

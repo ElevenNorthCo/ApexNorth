@@ -47,6 +47,23 @@ fn is_newer(current: (u64, u64, u64), remote: (u64, u64, u64), remote_build: &st
     beta && beta_build(remote_build) > my_build
 }
 
+/// Which update feed this build follows, for the Settings screen.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildInfo {
+    /// "beta" or "stable".
+    pub channel: &'static str,
+    /// The beta build number (the release workflow's run number).
+    pub build: Option<u64>,
+}
+
+pub fn build_info() -> BuildInfo {
+    BuildInfo {
+        channel: if is_beta() { "beta" } else { "stable" },
+        build: BUILD.and_then(|b| b.parse().ok()).filter(|_| is_beta()),
+    }
+}
+
 /// The update found by the last check, ready to install.
 #[derive(Default)]
 pub struct Pending(Mutex<Option<Update>>);

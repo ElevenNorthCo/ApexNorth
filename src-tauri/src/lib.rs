@@ -422,6 +422,12 @@ fn voice_builtin(state: State<AppState>) -> bool {
     state.builtin_tts.is_some()
 }
 
+/// Which update channel (stable or beta) and build this app is.
+#[tauri::command]
+fn build_info() -> updater::BuildInfo {
+    updater::build_info()
+}
+
 /// A newer signed release for this channel (stable or beta), if there is one.
 #[tauri::command]
 async fn check_update(app: AppHandle, pending: State<'_, updater::Pending>) -> Result<Option<updater::UpdateInfo>, String> {
@@ -547,6 +553,7 @@ pub fn run() {
             list_voices,
             voices_dir,
             test_voice,
+            build_info,
             check_update,
             install_update,
         ])
