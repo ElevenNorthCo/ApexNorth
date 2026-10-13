@@ -105,7 +105,9 @@ Not sure which Mac you have? Click the Apple menu → **About This Mac**. "Chip:
 
 When a new version is out, an **Update** button appears in the top bar. Click it: the button fills as the update downloads, then ApexNorth installs it and restarts on the new version. Updates are signed, and the app only installs one carrying ApexNorth's signature. On Windows a small installer window shows for a few seconds; on Linux the `.deb` asks for your password.
 
-If an update can't install, the button turns orange and opens the download page instead. You can always run the install command again too. Versions before 0.3.0 can't update themselves yet: their **Update** button opens the download page, and after that one manual update the next ones install in the app.
+**Settings → Version & updates** shows which version you have and whether it's a regular or beta build, with a **Check for updates** button (it says *Up to date* when there's nothing newer) and the same update button when there is.
+
+If an update can't install, the button turns orange, Settings shows why, and the next click opens the download page instead. You can always run the install command again too. Versions before 0.3.0 can't update themselves: their **Update** button opens the download page, and after that one manual update the next ones install in the app.
 
 ### Beta (test builds)
 
@@ -134,13 +136,14 @@ If it can't find the console:
 
 ## Race engineer voice
 
-The voice is built in: ApexNorth ships a voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) and the **[Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)** voices, natural-sounding and under the Apache-2.0 license, so callouts work straight after installing. Three are picked out: **Michael** (American male, the default), **Heart** (American female) and **George** (British male). Nineteen more English Kokoro voices are in the list too, American and British, no download needed.
+The voice is built in: ApexNorth ships a voice engine ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with ONNX Runtime and espeak-ng) and the **[Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)** voices, natural-sounding and under the Apache-2.0 license, so callouts work straight after installing. Four are picked out: **Emma** (British female, the default), **Michael** (American male), **Heart** (American female) and **George** (British male). Eighteen more English Kokoro voices are in the list too, American and British, no download needed.
 
 It runs in a small helper program, `apexnorth-voice` (GPL-3.0, source in [`src-tauri/voice-helper`](src-tauri/voice-helper)), that keeps the voice loaded in memory: a new phrase takes a fraction of a second, repeated callouts play instantly from a cache, and if the voice engine ever crashes the app carries on and restarts it.
 
 In **Settings → Race engineer voice**:
 - **Voice:** pick any voice from the list.
 - **Your own voices:** press **Open folder** and drop them into the app's `voices` folder, or choose a file with **Browse…**. Kokoro voice files (`.pt` as published on Hugging Face, `.npy`, or a raw 510×256 float32 `.bin`) are spoken by the bundled Kokoro model; a name starting `bf_`/`bm_` gets a British accent. Your own [Piper](https://github.com/rhasspy/piper) voice works too (`.onnx` with its `.onnx.json` next to it); check its license, as the published Piper voices are trained on noncommercial or research-only recordings, which is why ApexNorth no longer ships or offers them.
+- **Volume** and **Speaking speed:** once you move a slider, a **Reset** next to it puts it back to the default.
 - Press **Test voice** to hear it.
 
 If the voice can't play, the dashboard shows a red **Voice off** line explaining why.
@@ -350,7 +353,7 @@ Without `fetch-voice.py` the app still runs, and falls back to a `piper` program
 
 About 20 minutes later the installers are on the [Releases](https://github.com/ElevenNorthCo/ApexNorth/releases) page, the install commands pick them up, and everyone's app shows the **Update** button. The update button and install commands skip pre-releases.
 
-Each build is also signed for in-app updates with the project's updater key (repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`). The release gets a `latest.json` ([`scripts/update-feed.py`](scripts/update-feed.py)) that the app checks: the Latest release's for regular builds, `beta-latest`'s for beta builds. Local builds skip the signing.
+Each build is also signed for in-app updates with the project's updater key (repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`). The release gets a `latest.json` ([`scripts/update-feed.py`](scripts/update-feed.py)) that the app checks: the Latest release's for regular builds, `beta-latest`'s for beta builds. Local builds skip the signing. The feed's version has to be exactly the version the files were signed for, or the app refuses the update, so a beta's build number goes in the feed's notes (`beta.26: …`) rather than its version.
 
 The tests cover:
 - crypto round-trips for all three packet variants
@@ -453,11 +456,13 @@ The tests cover:
 - [x] GitHub Actions builds installers for macOS (Apple Silicon + Intel), Windows and Linux, with a voice test on each OS
 - [x] One-line install commands (`install.sh`, `install.ps1`) and an in-app **Update** button when a new release is out
 - [x] Signed in-app updates: click **Update**, watch it download, and the app restarts on the new version (stable and beta channels)
+- [x] **Settings → Version & updates:** your version and channel (regular or beta with its build number), **Check for updates**, and why an update failed
 - [ ] Smaller updates: download the voice once instead of with every update
 - [ ] Apple/Windows code signing
 - [x] App icon and branding
 - [x] Website: [apexnorth.app](https://apexnorth.app)
 - [x] **Milestone:** 0.2.0, the first release with Kokoro voices and the beta channel
+- [x] **Milestone:** 0.3.1, in-app updates verified end to end (beta 22 → beta 26 installed and restarted in the app); Emma is the default voice; **Reset** for voice volume and speed
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application

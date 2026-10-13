@@ -16,6 +16,8 @@ Or install from the terminal (see the README's *Install* section):
 
 The race engineer's voice is built in. Nothing else to install.
 
+**Already on 0.3.0 or newer?** Click **Update** in the app's top bar (or **Settings → Version & updates**). It downloads, installs and restarts by itself.
+
 **First launch on a Mac (downloaded in the browser):** macOS will say it can't check the app. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. The terminal install skips this.
 
 **First launch on Windows (downloaded in the browser):** if SmartScreen appears, click **More info → Run anyway**. When Windows Firewall asks, allow ApexNorth on private networks so it can hear your PlayStation.
