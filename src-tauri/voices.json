@@ -2,8 +2,9 @@
   "kokoro": {
     "package": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
     "sha256": "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298",
-    "default": "am_michael",
+    "default": "bf_emma",
     "voices": [
+      { "id": "bf_emma", "name": "Emma", "accent": "British", "gender": "female", "featured": true },
       { "id": "am_michael", "name": "Michael", "accent": "American", "gender": "male", "featured": true },
       { "id": "af_heart", "name": "Heart", "accent": "American", "gender": "female", "featured": true },
       { "id": "bm_george", "name": "George", "accent": "British", "gender": "male", "featured": true },
@@ -19,7 +20,6 @@
       { "id": "am_eric", "name": "Eric", "accent": "American", "gender": "male" },
       { "id": "am_liam", "name": "Liam", "accent": "American", "gender": "male" },
       { "id": "am_onyx", "name": "Onyx", "accent": "American", "gender": "male" },
-      { "id": "bf_emma", "name": "Emma", "accent": "British", "gender": "female" },
       { "id": "bf_isabella", "name": "Isabella", "accent": "British", "gender": "female" },
       { "id": "bf_alice", "name": "Alice", "accent": "British", "gender": "female" },
       { "id": "bf_lily", "name": "Lily", "accent": "British", "gender": "female" },

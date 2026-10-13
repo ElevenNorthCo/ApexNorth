@@ -69,8 +69,8 @@ impl Default for VoiceSettings {
             enabled: true,
             piper_path: find_piper().map(|p| p.display().to_string()).unwrap_or_default(),
             model_path: String::new(),
-            volume: 0.9,
-            length_scale: 0.9,
+            volume: 0.9, // DEFAULT_VOLUME in Settings.tsx
+            length_scale: 0.9, // DEFAULT_LENGTH_SCALE in Settings.tsx
             chatter: ChatterLevel::default(),
             callouts: Callouts::default(),
         }

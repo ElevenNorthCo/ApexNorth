@@ -37,6 +37,10 @@ const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
   { value: "crewChief", label: "Crew Chief", hint: "Maximum useful race-engineer feedback." },
 ];
 
+/** Same as `VoiceSettings::default()` in settings.rs. */
+const DEFAULT_VOLUME = 0.9;
+const DEFAULT_LENGTH_SCALE = 0.9;
+
 export function SettingsView() {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
@@ -185,16 +189,25 @@ export function SettingsView() {
             </Row>
           )}
           <Row label="Volume">
-            <Slider value={v.volume} min={0} max={1} step={0.05} onChange={(x) => update((s) => void (s.voice.volume = x))} />
+            <div className="flex items-center gap-3">
+              <ResetDefault show={v.volume !== DEFAULT_VOLUME} onClick={() => update((s) => void (s.voice.volume = DEFAULT_VOLUME))} />
+              <Slider value={v.volume} min={0} max={1} step={0.05} onChange={(x) => update((s) => void (s.voice.volume = x))} />
+            </div>
           </Row>
           <Row label="Speaking speed">
-            <Slider
+            <div className="flex items-center gap-3">
+              <ResetDefault
+                show={v.lengthScale !== DEFAULT_LENGTH_SCALE}
+                onClick={() => update((s) => void (s.voice.lengthScale = DEFAULT_LENGTH_SCALE))}
+              />
+              <Slider
               value={2 - v.lengthScale}
               min={0.6}
               max={1.4}
               step={0.05}
               onChange={(x) => update((s) => void (s.voice.lengthScale = Math.round((2 - x) * 100) / 100))}
-            />
+              />
+            </div>
           </Row>
           <div className="flex items-center gap-3 py-3">
             <Btn primary onClick={test} disabled={testing} className="flex items-center gap-2">
@@ -277,6 +290,19 @@ function Updates({ version, build }: { version: string; build: BuildInfo | null 
         </Row>
       )}
     </>
+  );
+}
+
+/** Puts a slider back to its default; only shown once it has been moved. */
+function ResetDefault({ show, onClick }: { show: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Back to the default"
+      className={`tech text-[12px] text-white/50 transition hover:text-accent ${show ? "" : "invisible"}`}
+    >
+      Reset
+    </button>
   );
 }
 

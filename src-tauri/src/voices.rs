@@ -173,10 +173,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn three_featured_kokoro_voices_one_of_them_british() {
+    fn four_featured_kokoro_voices_one_of_them_british() {
         let k = catalog_data().kokoro;
         let featured: Vec<_> = k.voices.iter().filter(|v| v.featured).collect();
-        assert_eq!(featured.len(), 3);
+        assert_eq!(featured.len(), 4);
         assert!(featured.iter().any(|v| v.id == k.default));
         assert!(featured.iter().any(|v| kokoro_lang(&v.id) == "en-gb"));
         assert!(featured.iter().any(|v| v.gender == "female"));
@@ -207,10 +207,10 @@ mod tests {
         std::fs::write(voices.join("right.bin"), vec![0u8; KOKORO_STYLE_BYTES as usize]).unwrap();
         std::fs::write(voices.join("other.bin"), b"not a voice").unwrap();
         let list = options(&[voices.clone()], Some(&tts));
-        assert_eq!(list.iter().filter(|o| o.group == "kokoro").count(), 3);
+        assert_eq!(list.iter().filter(|o| o.group == "kokoro").count(), 4);
         let custom: Vec<_> = list.iter().filter(|o| o.group == "custom").map(|o| o.label.as_str()).collect();
         assert_eq!(custom, ["bf_mine", "right"]);
-        assert_eq!(default_voice(&tts).as_deref(), Some("kokoro:am_michael"));
+        assert_eq!(default_voice(&tts).as_deref(), Some("kokoro:bf_emma"));
         assert!(voice_available("kokoro:af_heart", Some(&tts)));
         assert!(!voice_available("kokoro:af_nobody", Some(&tts)));
         assert!(voice_available(&voices.join("bf_mine.pt").display().to_string(), Some(&tts)));
