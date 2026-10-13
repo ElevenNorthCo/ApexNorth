@@ -267,6 +267,7 @@ export function SettingsView() {
 function Updates({ version, build }: { version: string; build: BuildInfo | null }) {
   const offer = useUpdates((s) => s.offer);
   const check = useUpdates((s) => s.check);
+  const install = useUpdates((s) => s.install);
   const checkNow = useUpdates((s) => s.checkNow);
   const beta = build?.channel === "beta";
   const label = `ApexNorth v${version}${beta && build?.build ? ` beta ${build.build}` : ""}`;
@@ -288,6 +289,9 @@ function Updates({ version, build }: { version: string; build: BuildInfo | null 
         >
           <UpdateButton />
         </Row>
+      )}
+      {install.step === "failed" && (
+        <p className="pb-3 text-[12px] text-[#ff9f1a]">Update failed: {install.error}</p>
       )}
     </>
   );

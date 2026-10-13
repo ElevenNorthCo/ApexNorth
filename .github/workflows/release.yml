@@ -233,9 +233,12 @@ jobs:
             cp .github/release-notes.md notes.md
           fi
       - name: Update feed (latest.json)
+        # The version must match the one the files were signed for, so the beta
+        # build number goes in the notes ("beta.42: ..."), not the version.
         env:
-          VERSION: ${{ needs.plan.outputs.channel == 'beta' && format('{0}+beta.{1}', needs.plan.outputs.app, github.run_number) || needs.plan.outputs.app }}
-        run: python3 scripts/update-feed.py out "$VERSION" "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          VERSION: ${{ needs.plan.outputs.app }}
+          BETA_BUILD: ${{ needs.plan.outputs.channel == 'beta' && github.run_number || '' }}
+        run: python3 scripts/update-feed.py out "$VERSION" "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" $BETA_BUILD
       - uses: softprops/action-gh-release@v2
         with:
           # Creates the tag on this commit when it doesn't exist yet.

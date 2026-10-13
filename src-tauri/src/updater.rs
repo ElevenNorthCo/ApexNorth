@@ -5,8 +5,10 @@
 //! signs each update with the project's updater key (the public half is in
 //! `tauri.conf.json`). Stable builds read the Latest release's feed. Beta
 //! builds (built with `APEXNORTH_CHANNEL=beta`) read the rolling
-//! `beta-latest` feed, whose version carries the build number
-//! (`0.3.0+beta.42`), so a new beta of the same version still counts as newer.
+//! `beta-latest` feed. Its version must be the one the files were signed for
+//! (plain `0.3.1`; the updater rejects a mismatch), so the beta build number
+//! rides in the notes (`beta.42: <change>`), and a new beta of the same
+//! version still counts as newer.
 
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -33,18 +35,23 @@ fn feed() -> String {
     }
 }
 
-/// The build number in a beta version's metadata ("beta.42" → 42).
-fn beta_build(build_metadata: &str) -> u64 {
-    build_metadata.rsplit('.').next().and_then(|n| n.parse().ok()).unwrap_or(0)
+/// A beta feed's notes, "beta.42: <change>", split into the build number and
+/// the change. Anything else is no build number and the notes as they are.
+fn beta_notes(notes: &str) -> (u64, &str) {
+    notes
+        .strip_prefix("beta.")
+        .and_then(|rest| rest.split_once(':'))
+        .and_then(|(n, rest)| Some((n.parse().ok()?, rest.trim_start())))
+        .unwrap_or((0, notes))
 }
 
 /// Is the remote release newer than this app? Stable compares versions. Beta
 /// also takes a later build of the same version.
-fn is_newer(current: (u64, u64, u64), remote: (u64, u64, u64), remote_build: &str, beta: bool, my_build: u64) -> bool {
+fn is_newer(current: (u64, u64, u64), remote: (u64, u64, u64), remote_build: u64, beta: bool, my_build: u64) -> bool {
     if remote != current {
         return remote > current;
     }
-    beta && beta_build(remote_build) > my_build
+    beta && remote_build > my_build
 }
 
 /// Which update feed this build follows, for the Settings screen.
@@ -97,7 +104,7 @@ pub async fn check(app: &AppHandle, pending: &Pending) -> Result<Option<UpdateIn
             is_newer(
                 (current.major, current.minor, current.patch),
                 (v.major, v.minor, v.patch),
-                v.build.as_str(),
+                beta_notes(remote.notes.as_deref().unwrap_or("")).0,
                 beta,
                 my_build,
             )
@@ -105,9 +112,12 @@ pub async fn check(app: &AppHandle, pending: &Pending) -> Result<Option<UpdateIn
         .build()
         .map_err(|e| e.to_string())?;
     let found = updater.check().await.map_err(|e| e.to_string())?;
-    let info = found.as_ref().map(|u| UpdateInfo {
-        version: u.version.replace("+beta.", " beta "),
-        notes: u.body.clone(),
+    let info = found.as_ref().map(|u| match beta_notes(u.body.as_deref().unwrap_or("")) {
+        (build, notes) if beta && build > 0 => UpdateInfo {
+            version: format!("{} beta {build}", u.version),
+            notes: Some(notes.to_string()),
+        },
+        _ => UpdateInfo { version: u.version.clone(), notes: u.body.clone() },
     });
     *pending.0.lock() = found;
     Ok(info)
@@ -143,26 +153,28 @@ mod tests {
 
     #[test]
     fn stable_takes_only_a_higher_version() {
-        assert!(is_newer((0, 2, 0), (0, 3, 0), "", false, 0));
-        assert!(is_newer((0, 2, 0), (1, 0, 0), "", false, 0));
-        assert!(!is_newer((0, 2, 0), (0, 2, 0), "", false, 0));
-        assert!(!is_newer((0, 3, 0), (0, 2, 9), "", false, 0));
+        assert!(is_newer((0, 2, 0), (0, 3, 0), 0, false, 0));
+        assert!(is_newer((0, 2, 0), (1, 0, 0), 0, false, 0));
+        assert!(!is_newer((0, 2, 0), (0, 2, 0), 0, false, 0));
+        assert!(!is_newer((0, 3, 0), (0, 2, 9), 0, false, 0));
     }
 
     #[test]
     fn beta_takes_a_later_build_of_the_same_version() {
-        assert!(is_newer((0, 3, 0), (0, 3, 0), "beta.42", true, 41));
-        assert!(!is_newer((0, 3, 0), (0, 3, 0), "beta.42", true, 42));
-        assert!(!is_newer((0, 3, 0), (0, 3, 0), "beta.40", true, 42));
-        assert!(is_newer((0, 2, 0), (0, 3, 0), "beta.1", true, 99));
+        assert!(is_newer((0, 3, 0), (0, 3, 0), 42, true, 41));
+        assert!(!is_newer((0, 3, 0), (0, 3, 0), 42, true, 42));
+        assert!(!is_newer((0, 3, 0), (0, 3, 0), 40, true, 42));
+        assert!(is_newer((0, 2, 0), (0, 3, 0), 1, true, 99));
         // A stable build never takes a rebuild of its own version.
-        assert!(!is_newer((0, 3, 0), (0, 3, 0), "beta.42", false, 0));
+        assert!(!is_newer((0, 3, 0), (0, 3, 0), 42, false, 0));
     }
 
     #[test]
-    fn beta_build_numbers() {
-        assert_eq!(beta_build("beta.42"), 42);
-        assert_eq!(beta_build(""), 0);
-        assert_eq!(beta_build("beta.x"), 0);
+    fn beta_build_numbers_from_the_notes() {
+        assert_eq!(beta_notes("beta.42: Emma is the default voice"), (42, "Emma is the default voice"));
+        assert_eq!(beta_notes("beta.7:x: y"), (7, "x: y"));
+        assert_eq!(beta_notes("Emma is the default voice"), (0, "Emma is the default voice"));
+        assert_eq!(beta_notes("beta.x: nope"), (0, "beta.x: nope"));
+        assert_eq!(beta_notes(""), (0, ""));
     }
 }

@@ -2,10 +2,14 @@
 """Write the in-app updater's feed, out/latest.json, from the signed update
 files the release workflow collected (each with a .sig next to it).
 
-    update-feed.py <dir> <version> <download base URL>
+    update-feed.py <dir> <version> <download base URL> [beta build number]
 
 The app (src-tauri/src/updater.rs) reads it from the Latest release, or from
 beta-latest on the beta channel. Does nothing when the build wasn't signed.
+
+The version must be exactly the one the files were signed for (the updater
+rejects a mismatch), so a beta's build number goes in the notes instead,
+as "beta.<n>: <change>", where the app's beta channel reads it.
 """
 import datetime
 import json
@@ -24,7 +28,7 @@ PLATFORMS = {
 }
 
 
-def main(out, version, base):
+def main(out, version, base, beta_build=None):
     platforms = {}
     for name, keys in PLATFORMS.items():
         sig = os.path.join(out, name + ".sig")
@@ -41,6 +45,8 @@ def main(out, version, base):
         notes = subprocess.run(["git", "log", "-1", "--format=%s"], capture_output=True, text=True).stdout.strip()
     except OSError:
         notes = ""
+    if beta_build:
+        notes = f"beta.{beta_build}: {notes}"
     feed = {
         "version": version,
         "notes": notes,
@@ -53,6 +59,6 @@ def main(out, version, base):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         sys.exit(__doc__)
     main(*sys.argv[1:])
