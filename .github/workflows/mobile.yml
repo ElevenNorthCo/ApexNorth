@@ -6,10 +6,12 @@
 #            ANDROID_KEY_ALIAS) when those secrets are set, otherwise with a
 #            throwaway key made for this run, so testers can sideload it
 #            (uninstall the previous test build first if the key changed).
-#            Then it's installed on an emulator, "Try demo mode" is tapped,
-#            and the run checks the dashboard goes live.
+#            Then it's installed on an emulator and started with the demo-mode
+#            test hook (debug.apexnorth.autodemo=1); the run checks from logcat
+#            that it goes live, records a lap and the engineer speaks.
 #   iOS:     a simulator build, launched with APEXNORTH_AUTODEMO=1 so it races
-#            the demo on its own; the run checks laps are recorded. Building
+#            the demo on its own; the run checks laps are recorded and the
+#            engineer speaks (smoke.log in the app's data folder). Building
 #            for a real iPhone needs an Apple team and signing (docs/mobile.md);
 #            without them the job only checks the device target compiles.
 #
@@ -102,8 +104,9 @@ jobs:
         with:
           name: ApexNorth-Android
           path: out
-      - name: Enable KVM
+      - name: Enable KVM (and ImageMagick for screenshots)
         run: |
+          sudo apt-get install -y imagemagick >/dev/null
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm

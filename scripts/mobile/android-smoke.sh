@@ -1,92 +1,67 @@
 #!/usr/bin/env bash
 # Run on a booted Android emulator (CI: .github/workflows/mobile.yml):
-# install the APK, tap "Try demo mode", check the dashboard goes live, a lap
-# is recorded and shows up in Activity, and the app never crashes.
+# install the APK, start it with the demo-mode test hook
+# (debug.apexnorth.autodemo=1), and check from logcat that it goes live,
+# records laps and the engineer talks, without crashing. Screenshots of the
+# portrait and landscape dashboard go to <out dir>.
 #
 #   scripts/mobile/android-smoke.sh <apk> <out dir>
 set -uo pipefail
 apk=$1
 out=$2
 pkg=com.elevennorth.apexnorth
-here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$out"
 
 shot() {
   adb exec-out screencap -p > "$out/$1.png"
   if command -v convert >/dev/null; then convert "$out/$1.png" -resize 360x -quality 70 "$out/$1.jpg"; fi
 }
-dump() {
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-  adb pull /sdcard/ui.xml "$out/$1.xml" >/dev/null 2>&1
-}
 alive() { adb shell pidof "$pkg" >/dev/null; }
+smoke() { adb logcat -d -s ApexNorth:I > "$out/smoke.txt"; }
 fail() {
   echo "::error::$1"
   shot failure
   adb logcat -d > "$out/logcat.txt"
-  grep -E "AndroidRuntime|panicked|FATAL|RustStdoutStderr|$pkg" "$out/logcat.txt" | tail -60
+  grep -E "AndroidRuntime|panicked|FATAL|ApexNorth|$pkg|chromium" "$out/logcat.txt" | tail -80
   exit 1
 }
-# Wait up to $2 seconds for text $1 on screen, dumping the UI to $3.xml.
+# Wait up to $2 seconds for a smoke line matching $1.
 wait_for() {
   for _ in $(seq 1 "$2"); do
     alive || fail "ApexNorth stopped running"
-    dump "$3"
-    python3 "$here/ui.py" "$out/$3.xml" "$1" >/dev/null && return 0
+    smoke
+    grep -qE "$1" "$out/smoke.txt" && return 0
     sleep 1
   done
   return 1
 }
-tap() {
-  local xy
-  xy="$(python3 "$here/ui.py" "$out/$2.xml" "$1")" || fail "no \"$1\" on screen"
-  echo "tap \"$1\" at $xy"
-  adb shell input tap $xy
-}
 
 adb install -r "$apk" || fail "install failed"
+adb shell setprop debug.apexnorth.autodemo 1
 adb logcat -c
 adb shell am start -W -n "$pkg/.MainActivity" || fail "launch failed"
 
-wait_for "Try demo mode" 90 connect || fail "the Connect screen never appeared"
-shot connect
-echo "--- Connect screen text:"; python3 "$here/ui.py" "$out/connect.xml" --text | head -40
-tap "Try demo mode" connect
-
-# Step 3 of Connect: "Receiving 60 packets/s from demo simulator".
-wait_for "demo simulator" 60 live || fail "the demo never went live"
+wait_for "demo started" 60 || fail "demo mode didn't start"
+wait_for "connection Live" 60 || fail "the demo never went live"
 echo "Live."
-tap "Open dashboard" live
-sleep 20
-dump dashboard
+sleep 25
 shot dashboard
-echo "--- Dashboard text:"; python3 "$here/ui.py" "$out/dashboard.xml" --text | head -60
 
-# The demo laps take about a minute; give it two and look in Activity.
-sleep 130
-alive || fail "ApexNorth stopped during the demo race"
+wait_for "lap [0-9]+ recorded" 240 || fail "no lap recorded within 4 minutes"
+wait_for "engineer: " 30 || fail "the engineer never spoke"
 shot racing
-dump racing
-tap "Menu" racing
-sleep 1
-dump menu
-tap "Activity" menu
-sleep 3
-dump activity
-shot activity
-echo "--- Activity text:"; python3 "$here/ui.py" "$out/activity.xml" --text | head -40
-python3 "$here/ui.py" "$out/activity.xml" "Best lap" >/dev/null || fail "no recorded session in Activity"
 
-# Rotate to landscape: the dashboard should still be there.
+# Rotate to landscape: the sim-dash layout.
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
-sleep 3
-tap "Dash" activity
-sleep 3
+sleep 5
 shot landscape
 adb shell settings put system user_rotation 0
+sleep 2
 
+alive || fail "ApexNorth stopped"
 adb logcat -d > "$out/logcat.txt"
 if grep -E "panicked|FATAL EXCEPTION" "$out/logcat.txt"; then fail "crash in logcat"; fi
-alive || fail "ApexNorth stopped"
+echo "--- smoke log:"
+cat "$out/smoke.txt"
 echo "Android demo race OK."

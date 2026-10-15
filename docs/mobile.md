@@ -119,7 +119,7 @@ Apple requires every app on a real device to be signed.
 
 **Try demo mode** works on phones too: a simulated PS5 on 127.0.0.1 inside the app, racing 10 laps with fuel, tyre wear, a pit stop and a spin.
 
-- `APEXNORTH_AUTODEMO=1` in the app's environment starts demo mode at launch and prints `apexnorth-smoke:` lines (connection, laps, engineer calls) to stdout. CI uses it in the iOS simulator: `SIMCTL_CHILD_APEXNORTH_AUTODEMO=1 xcrun simctl launch --console-pty booted com.elevennorth.apexnorth`.
+- **Demo-mode test hook:** `APEXNORTH_AUTODEMO=1` in the app's environment (iOS simulator: `SIMCTL_CHILD_APEXNORTH_AUTODEMO=1 xcrun simctl launch booted com.elevennorth.apexnorth`), or `adb shell setprop debug.apexnorth.autodemo 1` on Android, starts demo mode at launch and reports `apexnorth-smoke:` lines (connection, laps, engineer calls) to stdout, to `smoke.log` in the app's data folder and, on Android, to logcat (`adb logcat -s ApexNorth`). On Android, `adb shell setprop debug.apexnorth.autodemo 0` turns it off again.
 - `scripts/mobile/android-smoke.sh` and `ios-smoke.sh` are the CI smoke tests; both run locally against an emulator or simulator.
 - UI at phone sizes without any device: `scripts/mobile/ui-shots.mjs` screenshots every view at phone portrait, phone landscape and desktop sizes, with a fake backend serving a real demo race (instructions at the top of the script).
 
@@ -132,8 +132,8 @@ Apple requires every app on a real device to be signed.
 | Job | Does | Artifact |
 |---|---|---|
 | Android build | `tauri android build --apk --aab` for arm64 phones + x86_64 emulators, signs the APK | `ApexNorth-Android` (`.apk`, `.aab`) |
-| Android emulator demo race | installs the APK on an API 34 emulator, taps **Try demo mode**, checks it goes live, records a lap that shows in Activity, survives rotation, no crash | screenshots, UI dumps, logcat |
-| iOS simulator build + demo race | `tauri ios init` + `cargo check` for the device target + simulator build; checks the Local Network text is in the app; runs a demo race with `APEXNORTH_AUTODEMO=1` until a lap is recorded | simulator `.app` (zip), screenshots, console |
+| Android emulator demo race | installs the APK on an API 34 emulator, starts it with the demo-mode hook, checks from logcat that it goes live, records a lap and the engineer speaks, screenshots portrait and landscape, no crash | screenshots, smoke log, logcat |
+| iOS simulator build + demo race | `tauri ios init` + `cargo check` for the device target + simulator build; checks the Local Network text is in the app; runs a demo race with `APEXNORTH_AUTODEMO=1` until a lap is recorded and the engineer speaks | simulator `.app` (zip), screenshots, smoke log |
 
 **Android signing:** set the secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` to sign test APKs with your key (keep that key safe: Play Store updates must use it). Without them each run signs with a throwaway key, which works for sideloading, but you have to uninstall the previous test build first.
 

@@ -34,17 +34,30 @@ shot() {
 SIMCTL_CHILD_APEXNORTH_AUTODEMO=1 xcrun simctl launch --console-pty --terminate-running-process "$device" "$bundle" > "$out/console.txt" 2>&1 &
 launcher=$!
 
+# The app writes its smoke lines to smoke.log in its data folder.
+log=""
+find_log() {
+  [[ -n "$log" ]] && return 0
+  local data
+  data="$(xcrun simctl get_app_container "$device" "$bundle" data 2>/dev/null)" || return 1
+  log="$(find "$data" -name smoke.log 2>/dev/null | head -1)"
+  [[ -n "$log" ]]
+}
+seen() { find_log && grep -qE "$1" "$log"; }
+
 ok=0
 for i in $(seq 1 300); do
-  if grep -q "apexnorth-smoke: lap .* recorded" "$out/console.txt"; then ok=1; break; fi
-  if grep -q "apexnorth-smoke: demo failed" "$out/console.txt"; then break; fi
+  if seen "apexnorth-smoke: lap [0-9]+ recorded"; then ok=1; break; fi
+  if seen "apexnorth-smoke: demo failed"; then break; fi
   [[ $i == 30 ]] && shot dashboard
   sleep 1
 done
 shot racing
 kill "$launcher" 2>/dev/null || true
-echo "--- console:"
-grep -E "apexnorth-smoke|panicked|error" "$out/console.txt" | head -60
-grep -q "apexnorth-smoke: connection Live" "$out/console.txt" || { echo "::error::the demo never went live"; exit 1; }
+echo "--- smoke log ($log):"
+[[ -n "$log" ]] && cat "$log" | head -80 && cp "$log" "$out/smoke.txt"
+grep -E "panicked" "$out/console.txt" | head -20
+seen "apexnorth-smoke: connection Live" || { echo "::error::the demo never went live"; exit 1; }
 [[ $ok == 1 ]] || { echo "::error::no lap recorded within 5 minutes"; exit 1; }
+seen "apexnorth-smoke: engineer: " || { echo "::error::the engineer never spoke"; exit 1; }
 echo "iOS demo race OK."

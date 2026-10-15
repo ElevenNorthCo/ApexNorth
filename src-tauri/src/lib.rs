@@ -29,13 +29,23 @@ use telemetry::udp::{ConnState, ConnStatus, Handler, Link};
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 
-/// Set by `APEXNORTH_AUTODEMO=1`: start demo mode at launch and print what
-/// happens to stdout. CI uses it to drive the app in the iOS simulator.
+/// Set by `APEXNORTH_AUTODEMO=1` (or `adb shell setprop
+/// debug.apexnorth.autodemo 1` on Android): start demo mode at launch and
+/// report what happens (stdout, `smoke.log` in the data folder, logcat). CI
+/// uses it to drive the app in the emulator and simulator.
 static SMOKE: AtomicBool = AtomicBool::new(false);
+static SMOKE_LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
 
 fn smoke(line: impl FnOnce() -> String) {
     if SMOKE.load(Ordering::Relaxed) {
-        println!("apexnorth-smoke: {}", line());
+        let line = format!("apexnorth-smoke: {}", line());
+        println!("{line}");
+        platform::system_log(&line);
+        if let Some(f) = SMOKE_LOG.lock().as_mut() {
+            use std::io::Write;
+            let _ = writeln!(f, "{line}");
+            let _ = f.flush();
+        }
     }
 }
 
@@ -477,7 +487,7 @@ async fn install_update(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    SMOKE.store(std::env::var_os("APEXNORTH_AUTODEMO").is_some_and(|v| v == "1"), Ordering::Relaxed);
+    SMOKE.store(platform::autodemo_requested(), Ordering::Relaxed);
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init()).plugin(tauri_plugin_dialog::init());
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
@@ -577,6 +587,7 @@ pub fn run() {
             });
 
             if SMOKE.load(Ordering::Relaxed) {
+                *SMOKE_LOG.lock() = std::fs::File::create(data.join("smoke.log")).ok();
                 let state = app.state::<AppState>();
                 match Simulator::start() {
                     Ok(sim) => {
