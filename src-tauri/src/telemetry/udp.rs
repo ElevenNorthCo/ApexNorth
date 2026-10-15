@@ -20,6 +20,9 @@ const HEARTBEAT_EVERY: Duration = Duration::from_millis(1000);
 const SWEEP_EVERY: Duration = Duration::from_secs(2);
 const LIVE_TIMEOUT: Duration = Duration::from_secs(2);
 const VARIANT_CYCLE: Duration = Duration::from_secs(6);
+/// A socket that has failed this long (phones can reclaim an app's sockets
+/// while it's in the background) is closed and opened again.
+const REOPEN_AFTER: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -107,8 +110,41 @@ fn sweep(sock: &UdpSocket, hb: &[u8]) {
     let _ = sock.send_to(hb, (Ipv4Addr::BROADCAST, SEND_PORT));
 }
 
+fn open() -> std::io::Result<UdpSocket> {
+    let sock = UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], RECV_PORT)))?;
+    let _ = sock.set_broadcast(true);
+    sock.set_read_timeout(Some(Duration::from_millis(50)))?;
+    Ok(sock)
+}
+
+/// A receive error that means the socket itself is broken, not just that
+/// nothing arrived (or, on Windows, that a heartbeat bounced off a closed port).
+fn socket_broken(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind::*;
+    !matches!(e.kind(), WouldBlock | TimedOut | Interrupted | ConnectionReset | ConnectionRefused)
+}
+
+/// Close a broken socket and bind the port again. False if the port can't
+/// be had yet: the socket is then a placeholder and the caller retries.
+fn reopen(sock: &mut UdpSocket) -> bool {
+    // The new socket needs the port, so the old one closes first.
+    let Ok(placeholder) = UdpSocket::bind(SocketAddr::from(([127, 0, 0, 1], 0))) else { return false };
+    let _ = placeholder.set_read_timeout(Some(Duration::from_millis(50)));
+    drop(std::mem::replace(sock, placeholder));
+    match open() {
+        Ok(s) => {
+            *sock = s;
+            true
+        }
+        Err(e) => {
+            log::warn!("reopen telemetry socket: {e}");
+            false
+        }
+    }
+}
+
 fn run<H: Handler>(fixed_ip: Option<IpAddr>, stop: Arc<AtomicBool>, mut h: H) {
-    let sock = match UdpSocket::bind(SocketAddr::from(([0, 0, 0, 0], RECV_PORT))) {
+    let mut sock = match open() {
         Ok(s) => s,
         Err(e) => {
             h.status(&ConnStatus {
@@ -119,8 +155,9 @@ fn run<H: Handler>(fixed_ip: Option<IpAddr>, stop: Arc<AtomicBool>, mut h: H) {
             return;
         }
     };
-    let _ = sock.set_broadcast(true);
-    let _ = sock.set_read_timeout(Some(Duration::from_millis(50)));
+    let mut failing_since: Option<Instant> = None;
+    // A reopen that couldn't bind the port yet; tried again each second.
+    let mut retry_reopen: Option<Instant> = None;
 
     let mut target = fixed_ip;
     let mut variant = Variant::Tilde;
@@ -155,7 +192,32 @@ fn run<H: Handler>(fixed_ip: Option<IpAddr>, stop: Arc<AtomicBool>, mut h: H) {
             last_hb = None;
         }
 
-        if let Ok((n, src)) = sock.recv_from(&mut buf) {
+        let received = sock.recv_from(&mut buf);
+        match &received {
+            Err(e) if socket_broken(e) => {
+                let since = *failing_since.get_or_insert(now);
+                if now - since >= REOPEN_AFTER {
+                    log::warn!("telemetry socket failed ({e}); reopening");
+                    retry_reopen = (!reopen(&mut sock)).then_some(now);
+                    failing_since = None;
+                    last_hb = None;
+                }
+                // Don't spin on an error that returns at once.
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            _ => failing_since = None,
+        }
+        if retry_reopen.is_some_and(|t| now - t >= Duration::from_secs(1)) {
+            match open() {
+                Ok(s) => {
+                    sock = s;
+                    retry_reopen = None;
+                    last_hb = None;
+                }
+                Err(_) => retry_reopen = Some(now),
+            }
+        }
+        if let Ok((n, src)) = received {
             if let Some(p) = crypto::decrypt(&buf[..n]).and_then(|(plain, v)| {
                 variant = v;
                 Packet::parse(&plain)

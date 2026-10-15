@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-39ff7a?style=flat-square&labelColor=0b0f0d" />
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Android%20%C2%B7%20iOS%20(in%20development)-39ff7a?style=flat-square&labelColor=0b0f0d" />
   <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square&logo=tauri&logoColor=white&labelColor=0b0f0d" />
   <img alt="Rust" src="https://img.shields.io/badge/backend-Rust-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0b0f0d" />
   <img alt="React" src="https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61dafb?style=flat-square&logo=react&logoColor=white&labelColor=0b0f0d" />
@@ -312,9 +312,14 @@ src-tauri/src/
     live.rs              tyre temperature and wheel-slip watchers
     director.rs          chatter level, toggles, anti-nag, context timing
     phrases.rs           phrase variation, spoken numbers
-    voice_helper.rs      runs the apexnorth-voice helper and talks to it over a pipe
-    voice.rs             synthesis, WAV cache, playback queue
+    voice.rs             playback queue and priorities, shared by every platform (Backend trait)
+    voice_wav.rs         desktop: Kokoro/Piper → cached WAV → rodio
+    voice_helper.rs      desktop: runs the apexnorth-voice helper and talks to it over a pipe
+    voice_native.rs      phones: the system's offline text-to-speech
+  platform.rs            what differs by platform outside the voice (keep the screen on)
 src-tauri/voice-helper/  apexnorth-voice (GPL-3.0): sherpa-onnx + espeak-ng, Kokoro voice kept loaded
+src-tauri/plugins/device/  phones: system voice + keep-screen-on (Kotlin, Swift)
+src-tauri/gen/android/   Android Studio project (iOS's gen/apple is generated in CI)
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
   components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, Art, Flag, icons
@@ -342,6 +347,8 @@ npm run tauri build              # installer → src-tauri/target/release/bundle
 ```
 
 Without `fetch-voice.py` the app still runs, and falls back to a `piper` program on your `PATH` (`pipx install piper-tts`) for the voice.
+
+**Android and iOS:** `npm run tauri android dev` / `npm run tauri ios dev`. Setup, signing and testing are in [docs/mobile.md](docs/mobile.md).
 
 ### Releases
 
@@ -463,6 +470,18 @@ The tests cover:
 - [x] Website: [apexnorth.app](https://apexnorth.app)
 - [x] **Milestone:** 0.2.0, the first release with Kokoro voices and the beta channel
 - [x] **Milestone:** 0.3.1, in-app updates verified end to end (beta 22 → beta 26 installed and restarted in the app); Emma is the default voice; **Reset** for voice volume and speed
+
+### 🚧 Phase 4.5: Android and iPhone (branch `mobile`)
+The same app on phones, connecting straight to the PlayStation: no computer needed. See [docs/mobile.md](docs/mobile.md).
+- [x] One codebase: engine, engineer, strategy, storage and UI shared by all five platforms; desktop-only pieces (Kokoro helper, rodio, keep-awake, in-app updates) behind `cfg(desktop)`
+- [x] Android project and an in-repo plugin for the phone's offline voice and keep-screen-on
+- [x] Race engineer on phones: the same rules and queue, spoken by the system voice (Kokoro on phones is a follow-up: espeak-ng is GPL)
+- [x] Phone layouts: portrait dashboard (same tiles, stacked), landscape sim-dash, bottom tab bar, safe areas, reflowed Activity/Session/Lap analysis/Settings
+- [x] CI: Android APK/AAB and an emulator demo race; iOS simulator build and demo race
+- [ ] Live PS5 test from a real Android phone and iPhone
+- [ ] Kokoro voices on phones (non-GPL phonemizer)
+- [ ] Android 17 local network permission (then raise `targetSdk`)
+- [ ] Test builds for testers (APK on the beta release, TestFlight)
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application

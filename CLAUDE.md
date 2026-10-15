@@ -1,6 +1,6 @@
 # ApexNorth: guide for Claude
 
-ApexNorth is a GT7 live telemetry dashboard and race engineer. It is a Tauri 2 desktop app (Rust backend, React + TypeScript frontend) for macOS, Windows and Linux. The long-term goal is an AI race engineer you can chat with.
+ApexNorth is a GT7 live telemetry dashboard and race engineer. It is a Tauri 2 app (Rust backend, React + TypeScript frontend) for macOS, Windows and Linux, with Android and iOS in development on the `mobile` branch (one codebase; see "Phones" below and `docs/mobile.md`). The long-term goal is an AI race engineer you can chat with.
 
 The README has the full feature list, the protocol details, and the **phase roadmap**. Check it before starting new feature work, and tick roadmap items off when they ship.
 
@@ -141,6 +141,18 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Never change the pubkey or lose the private key: installed apps only accept updates signed by it.
   - Updates download the full installer (~390 MB, mostly Kokoro). Splitting the voice out is a roadmap item.
 - macOS builds are ad-hoc signed (`signingIdentity: "-"`, `hardenedRuntime: false` so the bundled dylibs load).
+
+## Phones (Android, iOS)
+- **One codebase.** Everything in `src/` and `src-tauri/src/` is shared. Only these differ, behind `cfg(desktop)` / `cfg(mobile)` (set by tauri-build) and target-specific Cargo dependencies:
+  - Voice output: `engineer/voice.rs` (queue, priorities, interruptions) talks to a `Backend` trait. Desktop: `voice_wav.rs` (helper + rodio). Phones: `voice_native.rs` → `platform::PhoneSpeech` → `plugins/device` (Android TextToSpeech, iOS AVSpeechSynthesizer). Voice setting on phones is `system:` (best British voice) or `system:<voice id>`.
+  - Keep-screen-on: `platform::ScreenAwake`. Updater: desktop only (`updater.rs` has mobile stubs). `build_info` reports `os` and `mobile`; the UI reads it from the store (`build`).
+  - Never add a desktop-only crate to `[dependencies]`; put it under the desktop target table in `Cargo.toml`.
+- **Plugin calls block on the UI thread.** Never call `plugins/device` from the link thread while a command on the main thread might be joining it (`ScreenAwake::set` spawns a thread for this reason).
+- **No GPL in the phone apps.** The voice helper (espeak-ng) is desktop-only. Kokoro on phones needs a non-GPL phonemizer (`docs/mobile.md`).
+- **Android project** is committed (`src-tauri/gen/android`, made by `tauri android init`). Hand changes: `targetSdk 36` (Android 17's local network protection; don't raise it without a runtime permission), `MainActivity.kt` (full screen, insets → `--an-inset-*`), proguard keep for the bridge, icons. **iOS** `gen/apple` is generated in CI from `tauri.ios.conf.json` and `Info.ios.plist` (local network text, orientations).
+- **UI:** `useViewport()` (`lib/viewport.ts`): `compact` = under 900 × 520 (phones only; desktop windows can't be that small). Compact gets `MobileNav` (bottom tabs) instead of `TopBar`, and the dashboard's `PORTRAIT` layout when upright (`LANDSCAPE` is the desktop canvas; tweak tile positions in the layout tables in `Dashboard.tsx`). Use `max-sm:` variants for phone reflow; check with `scripts/mobile/ui-shots.mjs` (screenshots at phone/desktop sizes from the `ui_fixture` demo race, no backend).
+- **CI:** `.github/workflows/mobile.yml` (Android APK/AAB + emulator demo race, iOS simulator build + demo race via `APEXNORTH_AUTODEMO=1`). Screenshots are printed base64 in the logs. Nothing is published; desktop `release.yml` is untouched.
+- This sandbox can't download the Android SDK/NDK (dl.google.com is blocked), so Android/iOS builds are checked in CI. `cargo check --target x86_64-linux-android --lib` with host clang (`CC_x86_64_linux_android=clang`, `CFLAGS_x86_64_linux_android="--target=x86_64-linux-android24 -isystem /usr/include -isystem /usr/include/x86_64-linux-gnu"`) catches Rust errors in `cfg(mobile)` code quickly.
 
 ## Website
 - [apexnorth.app](https://apexnorth.app) is the product site. It forwards to `elevennorth.co/apexnorth`, which the user runs outside this repo. Don't build a site here; just link to apexnorth.app.
