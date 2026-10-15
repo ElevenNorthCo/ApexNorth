@@ -118,7 +118,7 @@ jobs:
           script: bash scripts/mobile/android-smoke.sh out/ApexNorth-Android.apk out
       - name: Screenshots
         if: always()
-        run: for f in out/*.jpg; do [ -f "$f" ] && { echo "== $f"; base64 -w0 "$f"; echo; }; done
+        run: for f in out/*.jpg; do if [ -f "$f" ]; then echo "== $f"; base64 -w0 "$f"; echo; fi; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -147,21 +147,22 @@ jobs:
           key: ios
       - run: npm ci
       - name: Generate the Xcode project
-        run: |
-          npx tauri ios init --ci
-          plist="$(find src-tauri/gen/apple -name Info.plist -path '*_iOS*' | head -1)"
-          echo "Info.plist: $plist"
-          /usr/libexec/PlistBuddy -c 'Print :NSLocalNetworkUsageDescription' "$plist"
+        run: npx tauri ios init --ci
       - name: Check the device target compiles
         run: cargo check --target aarch64-apple-ios --lib
         working-directory: src-tauri
       - name: Build for the simulator
-        run: npx tauri ios build --ci --target aarch64-sim
+        run: |
+          npx tauri ios build --ci --target aarch64-sim
+          # src-tauri/Info.ios.plist must reach the app (local network prompt).
+          app="$(find src-tauri/gen/apple/build -type d -name '*.app' | head -1)"
+          echo "App: $app"
+          /usr/libexec/PlistBuddy -c 'Print :NSLocalNetworkUsageDescription' "$app/Info.plist"
       - name: Run the demo race in the simulator
         run: bash scripts/mobile/ios-smoke.sh out
       - name: Screenshots
         if: always()
-        run: for f in out/*.jpg; do [ -f "$f" ] && { echo "== $f"; base64 -i "$f"; echo; }; done
+        run: for f in out/*.jpg; do if [ -f "$f" ]; then echo "== $f"; base64 -i "$f"; echo; fi; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

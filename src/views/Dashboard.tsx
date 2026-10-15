@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ConnStatus, LiveState, PitWindow } from "../lib/api";
 import { DASH, delta, gearLabel, lapClock, speed, tyreColor } from "../lib/format";
 import { useStore } from "../lib/store";
@@ -6,9 +6,81 @@ import { ScaleToFit } from "../components/ScaleToFit";
 import { Tile } from "../components/Tile";
 import { Brand } from "../components/Brand";
 import { ChevronDown } from "../components/icons";
+import { useViewport } from "../lib/viewport";
 
-const W = 1000;
-const H = 540;
+type Box = { left: number; top: number; width: number; height: number };
+type At = Pick<CSSProperties, "left" | "right" | "top" | "width">;
+
+/**
+ * Where everything sits, in design-canvas pixels. The landscape canvas is
+ * the desktop dashboard (and a phone on its side, mounted by the wheel);
+ * the portrait canvas stacks the same tiles for a phone held upright.
+ */
+interface Layout {
+  w: number;
+  h: number;
+  brand: At;
+  shift: At;
+  badge: At;
+  position: Box;
+  lap: Box;
+  lapsLeft: Box;
+  tyres: Box;
+  gear: At;
+  speed: At;
+  laps: Box;
+  brake: Box;
+  throttle: Box;
+  fuel: Box;
+  clock: Box | null;
+  chips: At;
+  engineer: At;
+  slash: "wide" | "narrow";
+}
+
+const LANDSCAPE: Layout = {
+  w: 1000,
+  h: 540,
+  brand: { left: 18, top: 10 },
+  shift: { left: 356, top: 38, width: 340 },
+  badge: { right: 26, top: 24 },
+  position: { left: 28, top: 76, width: 128, height: 82 },
+  lap: { left: 166, top: 76, width: 112, height: 82 },
+  lapsLeft: { left: 288, top: 76, width: 94, height: 82 },
+  tyres: { left: 28, top: 174, width: 354, height: 202 },
+  gear: { left: 394, top: 80 },
+  speed: { left: 406, top: 294 },
+  laps: { left: 656, top: 86, width: 318, height: 290 },
+  brake: { left: 28, top: 392, width: 116, height: 102 },
+  throttle: { left: 154, top: 392, width: 124, height: 102 },
+  fuel: { left: 290, top: 392, width: 440, height: 102 },
+  clock: { left: 742, top: 392, width: 232, height: 102 },
+  chips: { left: 28, top: 508 },
+  engineer: { left: 500, right: 26, top: 505 },
+  slash: "wide",
+};
+
+const PORTRAIT: Layout = {
+  w: 540,
+  h: 1140,
+  brand: { left: 14, top: 10 },
+  shift: { left: 24, top: 74, width: 492 },
+  badge: { right: 20, top: 20 },
+  position: { left: 20, top: 118, width: 160, height: 82 },
+  lap: { left: 190, top: 118, width: 160, height: 82 },
+  lapsLeft: { left: 360, top: 118, width: 160, height: 82 },
+  gear: { left: 14, top: 214 },
+  speed: { left: 290, top: 222 },
+  brake: { left: 290, top: 322, width: 110, height: 102 },
+  throttle: { left: 410, top: 322, width: 110, height: 102 },
+  laps: { left: 20, top: 446, width: 500, height: 290 },
+  tyres: { left: 20, top: 756, width: 500, height: 202 },
+  fuel: { left: 20, top: 976, width: 500, height: 102 },
+  clock: null,
+  chips: { left: 20, top: 1094 },
+  engineer: { left: 20, right: 20, top: 1118 },
+  slash: "narrow",
+};
 
 export function Dashboard({ onToggleNav, navOpen }: { onToggleNav: () => void; navOpen: boolean }) {
   const live = useStore((s) => s.live);
@@ -19,57 +91,70 @@ export function Dashboard({ onToggleNav, navOpen }: { onToggleNav: () => void; n
   const l = isLive ? live : null;
 
   const fuelCritical = l != null && ((l.fuelPct != null && l.fuelPct < 15) || l.strategy?.window === "box_now");
+  const { compact, portrait } = useViewport();
+  const L = compact && portrait ? PORTRAIT : LANDSCAPE;
 
   return (
     <div className="an-bg relative h-full w-full">
       {fuelCritical && <div className="hit-glow pointer-events-none absolute inset-0 z-40" aria-hidden />}
-      <ScaleToFit width={W} height={H}>
-        <HeaderSlash />
+      <ScaleToFit width={L.w} height={L.h}>
+        <HeaderSlash kind={L.slash} width={L.w} />
         <button
           onClick={onToggleNav}
-          className="absolute left-[18px] top-[10px] flex items-center gap-[6px] text-white/70 hover:text-white"
+          className="absolute flex items-center gap-[6px] text-white/70 hover:text-white"
+          style={L.brand}
           title="Menu"
+          aria-label="Menu"
         >
           <Brand scale={0.95} />
           <ChevronDown width={20} height={20} className={`transition ${navOpen ? "rotate-180" : ""}`} />
         </button>
 
-        <ShiftLights l={l} />
-        <StatusBadge status={status} paused={!!l?.paused} onClick={() => go({ name: "connect" })} />
+        <ShiftLights l={l} at={L.shift} />
+        <StatusBadge status={status} paused={!!l?.paused} onClick={() => go({ name: "connect" })} at={L.badge} />
 
-        <Tile label="Position" color="var(--color-pos)" style={{ left: 28, top: 76, width: 128, height: 82 }}>
+        <Tile label="Position" color="var(--color-pos)" style={L.position}>
           <Big value={l?.position != null ? `P${l.position}` : DASH} of={l?.numCars} />
         </Tile>
-        <Tile label="Lap" color="var(--color-lap)" style={{ left: 166, top: 76, width: 112, height: 82 }}>
+        <Tile label="Lap" color="var(--color-lap)" style={L.lap}>
           <Big value={l?.lap ?? DASH} of={l?.totalLaps || null} />
         </Tile>
-        <Tile label="Laps Left" color="var(--color-laps)" style={{ left: 288, top: 76, width: 94, height: 82 }}>
+        <Tile label="Laps Left" color="var(--color-laps)" style={L.lapsLeft}>
           <Big value={l?.lapsRemaining ?? DASH} />
         </Tile>
 
-        <Tyres l={l} />
-        <GearPod l={l} />
-        <Speed l={l} units={units} />
-        <LapTimes l={l} />
+        <Tyres l={l} at={L.tyres} />
+        <GearPod l={l} at={L.gear} />
+        <Speed l={l} units={units} at={L.speed} />
+        <LapTimes l={l} at={L.laps} />
 
-        <Pedal label="Brake" color="var(--color-brk)" value={l?.brake} left={28} width={116} />
-        <Pedal label="Throttle" color="var(--color-thr)" value={l?.throttle} left={154} width={124} />
-        <Fuel l={l} />
-        <Clock />
+        <Pedal label="Brake" color="var(--color-brk)" value={l?.brake} at={L.brake} />
+        <Pedal label="Throttle" color="var(--color-thr)" value={l?.throttle} at={L.throttle} />
+        <Fuel l={l} at={L.fuel} />
+        {L.clock && <Clock at={L.clock} />}
 
-        <Indicators l={l} />
-        <EngineerLine />
+        <Indicators l={l} at={L.chips} />
+        <EngineerLine at={L.engineer} />
       </ScaleToFit>
     </div>
   );
 }
 
 /** The angled accent line under the logo, like a pit-wall banner. */
-function HeaderSlash() {
+function HeaderSlash({ kind, width }: { kind: "wide" | "narrow"; width: number }) {
   return (
-    <svg className="pointer-events-none absolute left-0 top-0" width={W} height={70}>
-      <path d="M0 62 H300 L330 36 H640" fill="none" stroke="rgba(57,255,122,0.35)" strokeWidth="1.2" />
-      <path d="M0 66 H296" fill="none" stroke="rgba(57,255,122,0.12)" strokeWidth="1" />
+    <svg className="pointer-events-none absolute left-0 top-0" width={width} height={70}>
+      {kind === "wide" ? (
+        <>
+          <path d="M0 62 H300 L330 36 H640" fill="none" stroke="rgba(57,255,122,0.35)" strokeWidth="1.2" />
+          <path d="M0 66 H296" fill="none" stroke="rgba(57,255,122,0.12)" strokeWidth="1" />
+        </>
+      ) : (
+        <>
+          <path d={`M0 62 H260 L284 52 H${width}`} fill="none" stroke="rgba(57,255,122,0.35)" strokeWidth="1.2" />
+          <path d="M0 66 H256" fill="none" stroke="rgba(57,255,122,0.12)" strokeWidth="1" />
+        </>
+      )}
     </svg>
   );
 }
@@ -90,7 +175,7 @@ function Big({ value, of }: { value: string | number; of?: number | null }) {
 
 const LIGHT_COLORS = ["#2bea5c", "#2bea5c", "#39ff7a", "#a6f23a", "#ffe03a", "#ffc21a", "#ff8a1a", "#ff3b4a", "#ff3b4a", "#ff2d55", "#ff2d55", "#ff2d55"];
 
-function ShiftLights({ l }: { l: LiveState | null }) {
+function ShiftLights({ l, at }: { l: LiveState | null; at: At }) {
   const n = LIGHT_COLORS.length;
   let lit = 0;
   let flash = false;
@@ -102,7 +187,7 @@ function ShiftLights({ l }: { l: LiveState | null }) {
     flash = l.revLimit || l.rpm >= end;
   }
   return (
-    <div className="absolute left-[356px] top-[38px] flex w-[340px] justify-between">
+    <div className="absolute flex justify-between" style={at}>
       {LIGHT_COLORS.map((color, i) => {
         const on = flash || i < lit;
         const c = flash ? "#4aa8ff" : color;
@@ -122,7 +207,7 @@ function ShiftLights({ l }: { l: LiveState | null }) {
   );
 }
 
-function StatusBadge({ status, paused, onClick }: { status: ConnStatus; paused: boolean; onClick: () => void }) {
+function StatusBadge({ status, paused, onClick, at }: { status: ConnStatus; paused: boolean; onClick: () => void; at: At }) {
   const map: Record<ConnStatus["state"], [string, string, boolean]> = {
     idle: ["OFFLINE", "#8b9b96", false],
     searching: ["SEARCHING", "#ffc81a", true],
@@ -135,8 +220,8 @@ function StatusBadge({ status, paused, onClick }: { status: ConnStatus; paused: 
   return (
     <button
       onClick={onClick}
-      className="num absolute right-[26px] top-[24px] flex h-[30px] items-center gap-[10px] whitespace-pre rounded-full px-[14px] text-[14px] font-bold tracking-[0.06em]"
-      style={{ color, border: `1.5px solid ${color}`, boxShadow: `0 0 10px color-mix(in srgb, ${color} 40%, transparent)` }}
+      className="num absolute flex h-[30px] items-center gap-[10px] whitespace-pre rounded-full px-[14px] text-[14px] font-bold tracking-[0.06em]"
+      style={{ ...at, color, border: `1.5px solid ${color}`, boxShadow: `0 0 10px color-mix(in srgb, ${color} 40%, transparent)` }}
       title={status.error ?? (status.ip ? `PlayStation ${status.ip}` : "Connect")}
     >
       {spin ? (
@@ -158,7 +243,7 @@ function tyreState(t: number): string {
   return "HOT";
 }
 
-function Tyres({ l }: { l: LiveState | null }) {
+function Tyres({ l, at }: { l: LiveState | null; at: Box }) {
   const t = l?.tyreTemp;
   const corner = (i: number, side: "left" | "right", top: number) => {
     const temp = t?.[i] ?? 0;
@@ -193,9 +278,9 @@ function Tyres({ l }: { l: LiveState | null }) {
     );
   };
   return (
-    <Tile notch label="Tyre Temperatures" color="#c9d2cf" style={{ left: 28, top: 174, width: 354, height: 202 }}>
+    <Tile notch label="Tyre Temperatures" color="#c9d2cf" style={at}>
       <div className="absolute inset-x-[14px] top-[100px] h-px bg-white/[0.07]" />
-      <CarTopDown className="absolute left-[136px] top-[14px]" />
+      <CarTopDown className="absolute top-[14px]" style={{ left: (at.width - 82) / 2 }} />
       {corner(0, "left", 24)}
       {corner(1, "right", 24)}
       {corner(2, "left", 112)}
@@ -209,10 +294,10 @@ function Tyres({ l }: { l: LiveState | null }) {
  * between the tyre bars, and its suspension arms reach out to them, so the
  * temperature bars read as the wheels.
  */
-function CarTopDown({ className }: { className?: string }) {
+function CarTopDown({ className, style }: { className?: string; style?: CSSProperties }) {
   const arm = { stroke: "#7d8d89", strokeWidth: 1.6, strokeLinecap: "round" as const };
   return (
-    <svg className={className} width="82" height="172" viewBox="0 0 82 172" fill="none">
+    <svg className={className} style={style} width="82" height="172" viewBox="0 0 82 172" fill="none">
       <defs>
         <linearGradient id="car-body" x1="0" x2="1">
           <stop offset="0" stopColor="#1b2422" />
@@ -281,7 +366,7 @@ function RpmArc({ side, lit, colors }: { side: "left" | "right"; lit: number; co
   return <>{segs}</>;
 }
 
-function GearPod({ l }: { l: LiveState | null }) {
+function GearPod({ l, at }: { l: LiveState | null; at: At }) {
   const gear = l ? gearLabel(l.gear, l.inGear) : "N";
   const shiftUp = !!l && l.suggestedGear != null && l.inGear && l.suggestedGear > l.gear;
   const N = 12;
@@ -292,7 +377,7 @@ function GearPod({ l }: { l: LiveState | null }) {
     right = Math.round(Math.max(0, Math.min(1, (l.rpm - l.rpmAlertMin) / Math.max(1, l.rpmAlertMax - l.rpmAlertMin))) * N);
   }
   return (
-    <div className="absolute left-[394px] top-[80px] h-[212px] w-[252px]">
+    <div className="absolute h-[212px] w-[252px]" style={at}>
       <svg className="absolute inset-0" width="252" height="212" viewBox="0 0 252 212">
         <defs>
           <linearGradient id="pod" x1="0" y1="0" x2="0" y2="1">
@@ -322,9 +407,9 @@ function GearPod({ l }: { l: LiveState | null }) {
   );
 }
 
-function Speed({ l, units }: { l: LiveState | null; units: "metric" | "imperial" }) {
+function Speed({ l, units, at }: { l: LiveState | null; units: "metric" | "imperial"; at: At }) {
   return (
-    <div className="absolute left-[406px] top-[294px] h-[84px] w-[228px]">
+    <div className="absolute h-[84px] w-[228px]" style={at}>
       <svg className="absolute inset-0" width="228" height="84" viewBox="0 0 228 84" style={{ filter: "drop-shadow(0 0 8px rgba(57,255,122,0.6))" }}>
         <path d="M24 2 H204 L226 26 V58 L204 82 H24 L2 58 V26 Z" fill="#070b0a" stroke="#39ff7a" strokeWidth="2.2" />
       </svg>
@@ -336,7 +421,7 @@ function Speed({ l, units }: { l: LiveState | null; units: "metric" | "imperial"
   );
 }
 
-function LapTimes({ l }: { l: LiveState | null }) {
+function LapTimes({ l, at }: { l: LiveState | null; at: Box }) {
   const d = l?.deltaMs;
   // Remember how much the last personal best improved on the one before.
   const prevBest = useRef<number | null>(null);
@@ -360,7 +445,7 @@ function LapTimes({ l }: { l: LiveState | null }) {
     </div>
   );
   return (
-    <Tile notch label="Lap Times" color="var(--color-laptime)" style={{ left: 656, top: 86, width: 318, height: 290 }}>
+    <Tile notch label="Lap Times" color="var(--color-laptime)" style={at}>
       {row(
         "Current",
         l?.currentLapMs,
@@ -391,11 +476,11 @@ function LapTimes({ l }: { l: LiveState | null }) {
   );
 }
 
-function Pedal({ label, color, value, left, width }: { label: string; color: string; value: number | undefined; left: number; width: number }) {
+function Pedal({ label, color, value, at }: { label: string; color: string; value: number | undefined; at: Box }) {
   const N = 14;
   const lit = value != null ? Math.round((Math.min(100, value) / 100) * N) : 0;
   return (
-    <Tile label={label} color={color} style={{ left, top: 392, width, height: 102 }}>
+    <Tile label={label} color={color} style={at}>
       <div
         className="absolute inset-x-[10px] bottom-[10px] top-[26px] rounded-[8px] border"
         style={{ borderColor: `color-mix(in srgb, ${color} 35%, transparent)`, background: `color-mix(in srgb, ${color} 7%, #050807)` }}
@@ -444,7 +529,7 @@ function fuelColor(pct: number) {
   return "#39ff7a";
 }
 
-function Fuel({ l }: { l: LiveState | null }) {
+function Fuel({ l, at }: { l: LiveState | null; at: Box }) {
   const fmt = (v: number | null | undefined, digits = 0, signed = false) =>
     v == null ? DASH : `${signed && v > 0 ? "+" : ""}${v.toFixed(digits)}`;
   const pit = pitBadge(l);
@@ -460,7 +545,7 @@ function Fuel({ l }: { l: LiveState | null }) {
     </div>
   );
   return (
-    <Tile notch label="Fuel" color="var(--color-fuel)" style={{ left: 290, top: 392, width: 440, height: 102, borderRadius: 18 }}>
+    <Tile notch label="Fuel" color="var(--color-fuel)" style={{ ...at, borderRadius: 18 }}>
       <svg className="absolute left-[18px] top-[16px]" width="26" height="30" viewBox="0 0 24 28" fill="none" style={{ filter: "drop-shadow(0 0 4px #39ff7a)" }}>
         <path d="M3 26V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v22z" fill="#39ff7a" />
         <path d="M5 5h8v6H5z" fill="#06100a" />
@@ -493,7 +578,7 @@ function Fuel({ l }: { l: LiveState | null }) {
   );
 }
 
-function Clock() {
+function Clock({ at }: { at: Box }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 5000);
@@ -505,7 +590,7 @@ function Clock() {
   const h = now.getHours();
   const day = h >= 6 && h < 19;
   return (
-    <Tile notch label="Time" color="#e6ecea" style={{ left: 742, top: 392, width: 232, height: 102, borderRadius: 18 }}>
+    <Tile notch label="Time" color="#e6ecea" style={{ ...at, borderRadius: 18 }}>
       <div className="absolute right-[14px] top-[12px]" title={day ? "Day" : "Night"}>
         {day ? (
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffc81a" strokeWidth="2" strokeLinecap="round" style={{ filter: "drop-shadow(0 0 4px #ffc81a)" }}>
@@ -527,7 +612,7 @@ function Clock() {
 }
 
 /** Small status chips for the driver aids and warnings. */
-function Indicators({ l }: { l: LiveState | null }) {
+function Indicators({ l, at }: { l: LiveState | null; at: At }) {
   const pit = l?.pitWindow;
   const chips: [string, boolean, string, string][] = [
     ["TCS", !!l?.tcs, "#ff9f1a", "Traction control active"],
@@ -540,7 +625,7 @@ function Indicators({ l }: { l: LiveState | null }) {
     ["LOCK", !!l && l.brake > 50 && Math.min(l.wheelSlip[0], l.wheelSlip[1]) < -0.2, "#ff8a1a", "Front lock-up"],
   ];
   return (
-    <div className="absolute left-[28px] top-[508px] flex gap-[6px]">
+    <div className="absolute flex gap-[6px]" style={at}>
       {chips.map(([label, on, color, title]) => (
         <div
           key={label}
@@ -560,7 +645,7 @@ function Indicators({ l }: { l: LiveState | null }) {
   );
 }
 
-function EngineerLine() {
+function EngineerLine({ at }: { at: At }) {
   const msg = useStore((s) => s.engineer);
   const voiceError = useStore((s) => s.voiceError);
   const go = useStore((s) => s.go);
@@ -570,10 +655,10 @@ function EngineerLine() {
     const id = setTimeout(() => force((n) => n + 1), 6000);
     return () => clearTimeout(id);
   }, [msg]);
-  const box = "absolute left-[500px] right-[26px] top-[505px] flex justify-end";
+  const box = "absolute flex justify-end";
   if (voiceError && (!msg || Date.now() - msg.at > 6000)) {
     return (
-      <button onClick={() => go({ name: "settings" })} className={box}>
+      <button onClick={() => go({ name: "settings" })} className={box} style={at}>
         <span className="truncate rounded-full border border-red-500/40 bg-red-500/15 px-[12px] py-[3px] text-[13px] font-medium text-red-300">
           Voice off · {voiceError} (click to fix)
         </span>
@@ -582,7 +667,7 @@ function EngineerLine() {
   }
   if (!msg || Date.now() - msg.at > 6000) return null;
   return (
-    <div className={box}>
+    <div className={box} style={at}>
       <span className="truncate rounded-full border border-accent/40 bg-accent/10 px-[12px] py-[3px] text-[13px] font-medium text-[#b6ffcf]">
         <span className="tech mr-[6px] text-[11px] text-accent">Engineer</span>
         {msg.text}

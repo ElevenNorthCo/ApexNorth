@@ -25,6 +25,28 @@
   --color-fuel: #ffc81a;
 }
 
+/* Space the notch, camera cutout and system bars take (zero on desktop). */
+:root {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--an-inset-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--an-inset-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--an-inset-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--an-inset-left, 0px));
+}
+
+#root {
+  box-sizing: border-box;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+/* Phones: no tap highlight or text-size inflation; taps feel immediate. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
 html,
 body,
 #root {

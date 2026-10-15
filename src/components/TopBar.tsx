@@ -3,6 +3,7 @@ import { clock } from "../lib/format";
 import { useUpdates } from "../lib/updates";
 import { useStore, type View } from "../lib/store";
 import { Brand } from "./Brand";
+import { linkBadge } from "./MobileNav";
 import { Cog } from "./icons";
 import { UpdateButton } from "./UpdateButton";
 
@@ -35,18 +36,7 @@ export function TopBar() {
     };
   }, [checkUpdates]);
 
-  const [text, color] =
-    status.state === "live"
-      ? paused
-        ? ["PAUSED", "#ff9f1a"]
-        : [`LIVE ${Math.round(status.hz)}Hz`, "#39ff7a"]
-      : status.state === "idle"
-        ? ["OFFLINE", "#8b9b96"]
-        : status.state === "error"
-          ? ["ERROR", "#ff3b4a"]
-          : status.state === "lost"
-            ? ["SIGNAL LOST", "#ff9f1a"]
-            : ["SEARCHING", "#ffc81a"];
+  const [text, color] = linkBadge(status, paused);
 
   return (
     <header className="relative z-40 flex h-[68px] shrink-0 items-stretch border-b border-accent/25 bg-[#050807]/95 backdrop-blur">

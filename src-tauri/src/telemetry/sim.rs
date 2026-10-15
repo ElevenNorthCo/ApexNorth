@@ -515,4 +515,55 @@ mod tests {
         assert!(!has(&crew, "P2. ") || !crew.iter().any(|(l, t)| *l == 3 && t.contains("P2")), "lap 3 flicker not announced");
         assert!(has(&normal, "P3") && has(&minimal, "podium"));
     }
+
+    /// Write a demo race as JSON for UI work without a backend
+    /// (`scripts/mobile/ui-shots.mjs` serves it to the frontend):
+    /// `APEXNORTH_FIXTURE=out.json cargo test ui_fixture -- --ignored`.
+    #[test]
+    #[ignore]
+    fn ui_fixture() {
+        use crate::storage::Db;
+        let out = std::env::var("APEXNORTH_FIXTURE").expect("set APEXNORTH_FIXTURE to the output path");
+        let db = Db::memory().unwrap();
+        let mut car = Car::new();
+        let mut engine = Engine::new();
+        let mut session = None;
+        let mut live = None;
+        let mut laps = 0;
+        for _ in 0..60 * 60 * 25 {
+            let p = car.step();
+            for e in engine.on_packet(&p) {
+                match e {
+                    EngineEvent::SessionStarted { car_code, total_laps } => {
+                        session = Some(db.create_session(car_code, total_laps as i32, 1_760_000_000_000).unwrap());
+                    }
+                    EngineEvent::LapCompleted(l, _) => {
+                        let id = session.unwrap();
+                        if l.is_valid {
+                            if let Ok(t) = db.identify_track(l.start_pos, l.length_m, &l.samples) {
+                                let _ = db.set_session_track(id, t.id);
+                            }
+                        }
+                        db.insert_lap(id, &l).unwrap();
+                        laps += 1;
+                    }
+                    _ => {}
+                }
+            }
+            // A mid-race frame with a best lap to compare against.
+            if laps == 5 && live.is_none() && engine.live().lap_fraction.is_some_and(|f| f > 0.4) {
+                live = Some(serde_json::to_value(engine.live()).unwrap());
+            }
+            if laps >= RACE_LAPS {
+                break;
+            }
+        }
+        let sessions = db.list_sessions().unwrap();
+        let id = sessions[0].id;
+        let session_laps = db.session_laps(id).unwrap();
+        let details: Vec<_> = session_laps.iter().take(4).map(|l| db.lap_detail(l.id).unwrap()).collect();
+        let json = serde_json::json!({ "sessions": sessions, "laps": session_laps, "details": details, "live": live });
+        std::fs::write(&out, serde_json::to_string(&json).unwrap()).unwrap();
+        println!("wrote {out}");
+    }
 }

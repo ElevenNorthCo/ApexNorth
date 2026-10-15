@@ -28,6 +28,7 @@ const VOICE_GROUPS: { group: VoiceOption["group"]; label: string }[] = [
   { group: "kokoroMore", label: "More Kokoro voices" },
   { group: "custom", label: "Your Kokoro voices" },
   { group: "piper", label: "Your Piper voices" },
+  { group: "system", label: "Phone voices (offline)" },
 ];
 
 const CHATTER: { value: ChatterLevel; label: string; hint: string }[] = [
@@ -65,6 +66,8 @@ export function SettingsView() {
   }, []);
 
   if (!settings) return null;
+  // Phones speak with the system's own offline voices (no Kokoro, Piper or voice files).
+  const mobile = !!build?.mobile;
 
   const update = (fn: (s: Settings) => void) => {
     const next: Settings = structuredClone(settings);
@@ -105,7 +108,11 @@ export function SettingsView() {
   const current = voices.find((o) => o.value === v.modelPath);
   const voiceHint = !current
     ? v.modelPath || `Put voices in ${voicesDir}`
-    : current.group === "piper"
+    : current.group === "system"
+      ? v.modelPath === "system:"
+        ? "The phone's best English voice. Add more in the phone's text-to-speech settings."
+        : "The phone's own voice, offline"
+      : current.group === "piper"
       ? "Piper voice"
       : current.group === "custom"
         ? `Kokoro voice file: ${v.modelPath}`
@@ -113,7 +120,7 @@ export function SettingsView() {
 
   return (
     <div className="scroll-thin h-full overflow-y-auto pb-16">
-      <div className="mx-auto max-w-3xl px-6 pt-8">
+      <div className="mx-auto max-w-3xl px-6 pt-8 max-sm:px-4 max-sm:pt-5">
         <h1 className="brand text-[44px] leading-none">
           SET<span className="text-accent drop-shadow-[0_0_12px_rgba(57,255,122,0.5)]">TINGS</span>
         </h1>
@@ -144,10 +151,13 @@ export function SettingsView() {
         </Section>
 
         <Section title="Race engineer voice" color="var(--color-thr)">
-          <Row label="Voice callouts" hint={builtin ? "Built-in Kokoro voices, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}>
+          <Row
+            label="Voice callouts"
+            hint={mobile ? "Your phone's own voice, fully offline." : builtin ? "Built-in Kokoro voices, fully offline. Nothing to install." : "Spoken with Piper, fully offline"}
+          >
             <Toggle checked={v.enabled} onChange={(c) => update((s) => void (s.voice.enabled = c))} />
           </Row>
-          {!builtin && (
+          {!builtin && !mobile && (
             <Row label="Piper program" hint={v.piperPath || "Not found"}>
               <Btn onClick={() => browse("piper")}>Choose…</Btn>
             </Row>
@@ -177,7 +187,7 @@ export function SettingsView() {
                   })}
                 </select>
               )}
-              <Btn onClick={() => browse("model")}>Browse…</Btn>
+              {!mobile && <Btn onClick={() => browse("model")}>Browse…</Btn>}
             </div>
           </Row>
           {builtin && (
@@ -265,6 +275,17 @@ export function SettingsView() {
 
 /** This app's version and channel, a manual check, and the update when there is one. */
 function Updates({ version, build }: { version: string; build: BuildInfo | null }) {
+  if (build?.mobile) {
+    return (
+      <Row label={`ApexNorth v${version}`} hint={`${build.os === "ios" ? "iPhone / iPad" : "Android"} · updates come from the app store or a new test build`}>
+        <span />
+      </Row>
+    );
+  }
+  return <DesktopUpdates version={version} build={build} />;
+}
+
+function DesktopUpdates({ version, build }: { version: string; build: BuildInfo | null }) {
   const offer = useUpdates((s) => s.offer);
   const check = useUpdates((s) => s.check);
   const install = useUpdates((s) => s.install);
@@ -330,10 +351,10 @@ function Section({ title, color, children }: { title: string; color: string; chi
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 py-3.5">
+    <div className="flex items-center justify-between gap-6 py-3.5 max-sm:flex-wrap max-sm:gap-x-4 max-sm:gap-y-2">
       <div className="min-w-0">
         <div className="text-[15px] font-medium">{label}</div>
-        {hint && <div className="truncate text-[12px] text-white/45">{hint}</div>}
+        {hint && <div className="truncate text-[12px] text-white/45 max-sm:whitespace-normal">{hint}</div>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>

@@ -11,6 +11,9 @@ import "@fontsource-variable/saira";
 import "uplot/dist/uPlot.min.css";
 import "./index.css";
 import App from "./App";
+import { watchInsets } from "./lib/viewport";
+
+watchInsets();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

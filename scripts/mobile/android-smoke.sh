@@ -53,32 +53,35 @@ shot connect
 echo "--- Connect screen text:"; python3 "$here/ui.py" "$out/connect.xml" --text | head -40
 tap "Try demo mode" connect
 
-wait_for "LIVE" 60 live || fail "the demo never went live"
+# Step 3 of Connect: "Receiving 60 packets/s from demo simulator".
+wait_for "demo simulator" 60 live || fail "the demo never went live"
 echo "Live."
+tap "Open dashboard" live
 sleep 20
 dump dashboard
 shot dashboard
 echo "--- Dashboard text:"; python3 "$here/ui.py" "$out/dashboard.xml" --text | head -60
 
-# The demo laps take about 90 s; give it two laps and look in Activity.
-sleep 150
+# The demo laps take about a minute; give it two and look in Activity.
+sleep 130
 alive || fail "ApexNorth stopped during the demo race"
 shot racing
 dump racing
-python3 "$here/ui.py" "$out/racing.xml" "Activity" >/dev/null || tap "Menu" racing
+tap "Menu" racing
+sleep 1
 dump menu
 tap "Activity" menu
 sleep 3
 dump activity
 shot activity
 echo "--- Activity text:"; python3 "$here/ui.py" "$out/activity.xml" --text | head -40
-grep -qiE "lap|session|race" "$out/activity.xml" || fail "no recorded session in Activity"
+python3 "$here/ui.py" "$out/activity.xml" "Best lap" >/dev/null || fail "no recorded session in Activity"
 
 # Rotate to landscape: the dashboard should still be there.
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 sleep 3
-tap "Dashboard" activity 2>/dev/null || true
+tap "Dash" activity
 sleep 3
 shot landscape
 adb shell settings put system user_rotation 0
