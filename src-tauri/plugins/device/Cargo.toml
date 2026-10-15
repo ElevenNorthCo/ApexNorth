@@ -1,0 +1,18 @@
+[package]
+name = "tauri-plugin-apexnorth-device"
+version = "0.1.0"
+authors = ["Eleven North"]
+description = "ApexNorth's phone integrations: the system's offline voice and keeping the screen on"
+license = "PolyForm-Noncommercial-1.0.0"
+edition = "2021"
+publish = false
+links = "tauri-plugin-apexnorth-device"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

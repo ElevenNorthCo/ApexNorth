@@ -9,6 +9,10 @@
 //! The chosen voice is one string (`VoiceSettings::model_path`): a Piper
 //! `.onnx` path, `kokoro:<speaker>` for a speaker in the bundled Kokoro model,
 //! or the path of a Kokoro voice file (`.pt`, `.npy`, `.bin`).
+//!
+//! Phones use the system's voices instead (`system:<id>`, see
+//! `engineer/voice_native.rs`); only [`VoiceOption`] is shared.
+#![cfg_attr(mobile, allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -107,7 +111,7 @@ pub struct VoiceOption {
     /// The `model_path` setting for this voice.
     pub value: String,
     pub label: String,
-    /// "kokoro", "kokoroMore", "custom" or "piper".
+    /// "kokoro", "kokoroMore", "custom" or "piper"; "system" on phones.
     pub group: &'static str,
 }
 

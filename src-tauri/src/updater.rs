@@ -9,11 +9,19 @@
 //! (plain `0.3.1`; the updater rejects a mismatch), so the beta build number
 //! rides in the notes (`beta.42: <change>`), and a new beta of the same
 //! version still counts as newer.
+//!
+//! Desktop only: phones update through their app store (or a new APK), so
+//! there `check` finds nothing and `install` explains why.
+#![cfg_attr(mobile, allow(dead_code))]
 
-use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Url};
+use tauri::AppHandle;
+#[cfg(desktop)]
+use parking_lot::Mutex;
+#[cfg(desktop)]
+use tauri::Url;
+#[cfg(desktop)]
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 const REPO: &str = "ElevenNorthCo/ApexNorth";
@@ -62,18 +70,28 @@ pub struct BuildInfo {
     pub channel: &'static str,
     /// The beta build number (the release workflow's run number).
     pub build: Option<u64>,
+    /// "macos", "windows", "linux", "android" or "ios".
+    pub os: &'static str,
+    /// A phone build: no in-app updates, the system voice, touch layout.
+    pub mobile: bool,
 }
 
 pub fn build_info() -> BuildInfo {
     BuildInfo {
         channel: if is_beta() { "beta" } else { "stable" },
         build: BUILD.and_then(|b| b.parse().ok()).filter(|_| is_beta()),
+        os: crate::platform::OS,
+        mobile: crate::platform::MOBILE,
     }
 }
 
 /// The update found by the last check, ready to install.
+#[cfg(desktop)]
 #[derive(Default)]
 pub struct Pending(Mutex<Option<Update>>);
+#[cfg(mobile)]
+#[derive(Default)]
+pub struct Pending;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,6 +109,17 @@ pub enum Progress {
     Installing,
 }
 
+#[cfg(mobile)]
+pub async fn check(_app: &AppHandle, _pending: &Pending) -> Result<Option<UpdateInfo>, String> {
+    Ok(None)
+}
+
+#[cfg(mobile)]
+pub async fn install(_app: &AppHandle, _pending: &Pending, _progress: Channel<Progress>) -> Result<(), String> {
+    Err("On phones, updates come from the app store or a new test build.".into())
+}
+
+#[cfg(desktop)]
 pub async fn check(app: &AppHandle, pending: &Pending) -> Result<Option<UpdateInfo>, String> {
     let beta = is_beta();
     let my_build = BUILD.and_then(|b| b.parse().ok()).unwrap_or(0);
@@ -123,6 +152,7 @@ pub async fn check(app: &AppHandle, pending: &Pending) -> Result<Option<UpdateIn
     Ok(info)
 }
 
+#[cfg(desktop)]
 pub async fn install(app: &AppHandle, pending: &Pending, progress: Channel<Progress>) -> Result<(), String> {
     let update = pending.0.lock().clone().ok_or("No update to install. Check again.")?;
     let mut done = 0u64;

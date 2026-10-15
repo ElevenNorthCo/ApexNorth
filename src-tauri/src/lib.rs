@@ -1,5 +1,6 @@
 mod catalog;
 mod engineer;
+mod platform;
 mod session;
 mod settings;
 mod storage;
@@ -11,6 +12,7 @@ use parking_lot::{Mutex, RwLock};
 use serde::Serialize;
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -26,6 +28,16 @@ use telemetry::sim::Simulator;
 use telemetry::udp::{ConnState, ConnStatus, Handler, Link};
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
+
+/// Set by `APEXNORTH_AUTODEMO=1`: start demo mode at launch and print what
+/// happens to stdout. CI uses it to drive the app in the iOS simulator.
+static SMOKE: AtomicBool = AtomicBool::new(false);
+
+fn smoke(line: impl FnOnce() -> String) {
+    if SMOKE.load(Ordering::Relaxed) {
+        println!("apexnorth-smoke: {}", line());
+    }
+}
 
 struct AppState {
     db: Arc<Mutex<Db>>,
@@ -68,7 +80,7 @@ struct LiveHandler {
     engineer: Engineer,
     session: Option<SessionCtx>,
     last_emit: Instant,
-    awake: Option<keepawake::KeepAwake>,
+    awake: platform::ScreenAwake,
 }
 
 struct SessionCtx {
@@ -90,6 +102,7 @@ fn now_ms() -> i64 {
 impl LiveHandler {
     fn speak(&self, callouts: Vec<Callout>) {
         for c in callouts {
+            smoke(|| format!("engineer: {}", c.text));
             let _ = self.app.emit("engineer", &c.text);
             self.voice.say(c);
         }
@@ -155,6 +168,7 @@ impl LiveHandler {
                     fuel_used_pct: lap.fuel_used_pct.map(|f| f as f64),
                     max_speed: lap.max_speed as f64,
                 };
+                smoke(|| format!("lap {} recorded: {} ms, valid {}, session {session_id}", lap.lap_no, lap.time_ms, lap.is_valid));
                 let _ = self.app.emit(
                     "lap",
                     LapEvent { session_id, lap: summary, track_name: ctx.track.as_ref().map(|t| t.1.clone()) },
@@ -224,7 +238,11 @@ impl Handler for LiveHandler {
     fn status(&mut self, s: &ConnStatus) {
         // The link reports its state every second; only a drop out of Live
         // ends what the engineer was saying.
-        let was_live = std::mem::replace(&mut *self.status.lock(), s.clone()).state == ConnState::Live;
+        let was = std::mem::replace(&mut *self.status.lock(), s.clone()).state;
+        let was_live = was == ConnState::Live;
+        if was != s.state {
+            smoke(|| format!("connection {:?} {}", s.state, s.error.as_deref().unwrap_or("")));
+        }
         let _ = self.app.emit("connection", s);
         if s.state == ConnState::Live {
             // Remember the console so the next launch connects straight away.
@@ -235,21 +253,12 @@ impl Handler for LiveHandler {
                     let _ = cfg.save(&self.settings_path);
                 }
             }
-            if self.awake.is_none() {
-                self.awake = keepawake::Builder::default()
-                    .display(true)
-                    .idle(true)
-                    .reason("Live telemetry")
-                    .app_name("ApexNorth")
-                    .app_reverse_domain("com.elevennorth.apexnorth")
-                    .create()
-                    .ok();
-            }
+            self.awake.set(true);
         } else {
             if was_live {
                 self.voice.clear();
             }
-            self.awake = None;
+            self.awake.set(false);
         }
     }
 }
@@ -269,7 +278,7 @@ fn start_link(app: &AppHandle, state: &AppState, ip: Option<IpAddr>) {
         engineer: Engineer::new(),
         session: None,
         last_emit: Instant::now(),
-        awake: None,
+        awake: platform::ScreenAwake::new(app),
     };
     *state.link.lock() = Some(Link::start(ip, handler));
 }
@@ -388,6 +397,7 @@ fn save_settings(state: State<AppState>, settings: Settings) -> Result<(), Strin
 
 /// Voices to choose from: bundled Kokoro speakers, then voice files in the
 /// voices folder (and next to the current one), then Piper voices.
+#[cfg(desktop)]
 #[tauri::command]
 fn list_voices(state: State<AppState>) -> Vec<voices::VoiceOption> {
     let mut dirs = vec![state.voices_dir.clone()];
@@ -396,6 +406,26 @@ fn list_voices(state: State<AppState>) -> Vec<voices::VoiceOption> {
         dirs.push(dir.to_path_buf());
     }
     voices::options(&dirs, state.builtin_tts.as_deref())
+}
+
+/// On phones: the system's offline English voices, after "Automatic" (the
+/// best installed British voice).
+#[cfg(mobile)]
+#[tauri::command]
+async fn list_voices(app: AppHandle) -> Vec<voices::VoiceOption> {
+    use tauri_plugin_apexnorth_device::DeviceExt;
+    let found = tauri::async_runtime::spawn_blocking(move || app.device().voices()).await;
+    let mut out = vec![voices::VoiceOption { value: engineer::voice_native::SYSTEM_PREFIX.into(), label: "Automatic".into(), group: "system" }];
+    match found {
+        Ok(Ok(list)) => out.extend(list.into_iter().map(|v| voices::VoiceOption {
+            value: format!("{}{}", engineer::voice_native::SYSTEM_PREFIX, v.id),
+            label: v.name,
+            group: "system",
+        })),
+        Ok(Err(e)) => log::warn!("system voices: {e}"),
+        Err(e) => log::warn!("system voices: {e}"),
+    }
+    out
 }
 
 #[tauri::command]
@@ -447,10 +477,13 @@ async fn install_update(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    SMOKE.store(std::env::var_os("APEXNORTH_AUTODEMO").is_some_and(|v| v == "1"), Ordering::Relaxed);
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init()).plugin(tauri_plugin_dialog::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_apexnorth_device::init());
+    builder
         .manage(updater::Pending::default())
         .setup(|app| {
             let data = app.path().app_data_dir()?;
@@ -469,32 +502,51 @@ pub fn run() {
             }
             let settings_path = config.join("settings.json");
             let mut settings = Settings::load(&settings_path);
-            if settings.voice.piper_path.is_empty() {
-                if let Some(p) = settings::find_piper() {
-                    settings.voice.piper_path = p.display().to_string();
+            let handle = app.handle().clone();
+            let on_voice_error = move |e: String| {
+                let _ = handle.emit("voice_error", e);
+            };
+
+            #[cfg(desktop)]
+            let (voice, builtin_tts) = {
+                if settings.voice.piper_path.is_empty() {
+                    if let Some(p) = settings::find_piper() {
+                        settings.voice.piper_path = p.display().to_string();
+                    }
                 }
-            }
-            if settings.voice.model_path.is_empty() {
-                if let Some(v) = settings::find_voices(&[voices_dir.clone()]).into_iter().next() {
-                    settings.voice.model_path = v;
-                }
-            }
-            let builtin_tts = voices::builtin_dir(app.path().resource_dir().ok());
-            log::info!("voice engine: {}", builtin_tts.as_ref().map_or("external Piper".into(), |d| d.display().to_string()));
-            if let Some(dir) = &builtin_tts {
-                // A missing voice (none chosen yet, or Ryan from an older
-                // version) falls back to the default: Kokoro's Michael.
-                if !voices::voice_available(&settings.voice.model_path, Some(dir)) {
-                    if let Some(v) = voices::default_voice(dir) {
+                if settings.voice.model_path.is_empty() {
+                    if let Some(v) = settings::find_voices(&[voices_dir.clone()]).into_iter().next() {
                         settings.voice.model_path = v;
                     }
                 }
-            }
-            let voice_cache = cache.join("voice");
-            let handle = app.handle().clone();
-            let voice = Voice::start(settings.voice.clone(), builtin_tts.clone(), voice_cache, move |e| {
-                let _ = handle.emit("voice_error", e);
-            });
+                let builtin_tts = voices::builtin_dir(app.path().resource_dir().ok());
+                log::info!("voice engine: {}", builtin_tts.as_ref().map_or("external Piper".into(), |d| d.display().to_string()));
+                if let Some(dir) = &builtin_tts {
+                    // A missing voice (none chosen yet, or Ryan from an older
+                    // version) falls back to the default: Kokoro's Emma.
+                    if !voices::voice_available(&settings.voice.model_path, Some(dir)) {
+                        if let Some(v) = voices::default_voice(dir) {
+                            settings.voice.model_path = v;
+                        }
+                    }
+                }
+                let voice_cache = cache.join("voice");
+                let builtin = builtin_tts.clone();
+                let voice = Voice::start(settings.voice.clone(), move || engineer::voice_wav::WavBackend::new(builtin, voice_cache), on_voice_error);
+                (voice, builtin_tts)
+            };
+
+            // Phones speak with the system's offline voice (see voice_native.rs).
+            #[cfg(mobile)]
+            let (voice, builtin_tts) = {
+                let _ = &cache;
+                if !settings.voice.model_path.starts_with(engineer::voice_native::SYSTEM_PREFIX) {
+                    settings.voice.model_path = engineer::voice_native::SYSTEM_PREFIX.into();
+                }
+                let speech: Arc<dyn engineer::voice_native::NativeSpeech> = Arc::new(platform::PhoneSpeech(app.handle().clone()));
+                let voice = Voice::start(settings.voice.clone(), move || engineer::voice_native::NativeBackend::new(speech), on_voice_error);
+                (voice, None::<PathBuf>)
+            };
             let auto_ip = settings.auto_connect.then(|| settings.last_ip.clone()).flatten();
 
             let db = Arc::new(Mutex::new(db));
@@ -524,7 +576,17 @@ pub fn run() {
                 sim: Mutex::new(None),
             });
 
-            if let Some(ip) = auto_ip.and_then(|ip| parse_ip(&ip).ok()) {
+            if SMOKE.load(Ordering::Relaxed) {
+                let state = app.state::<AppState>();
+                match Simulator::start() {
+                    Ok(sim) => {
+                        *state.sim.lock() = Some(sim);
+                        start_link(app.handle(), &state, Some(IpAddr::from([127, 0, 0, 1])));
+                        smoke(|| format!("demo started on {} (data in {})", platform::OS, data.display()));
+                    }
+                    Err(e) => smoke(|| format!("demo failed: {e}")),
+                }
+            } else if let Some(ip) = auto_ip.and_then(|ip| parse_ip(&ip).ok()) {
                 let handle = app.handle().clone();
                 let state = app.state::<AppState>();
                 start_link(&handle, &state, Some(ip));

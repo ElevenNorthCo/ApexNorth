@@ -1,0 +1,173 @@
+# Android and iOS: build the apps from the same source as desktop, then run
+# them in an emulator / simulator and drive a demo race.
+#
+#   Android: a release APK (arm64 phones + x86_64 emulators) and an AAB. The
+#            APK is signed with ANDROID_KEYSTORE_BASE64 (+ _PASSWORD,
+#            ANDROID_KEY_ALIAS) when those secrets are set, otherwise with a
+#            throwaway key made for this run, so testers can sideload it
+#            (uninstall the previous test build first if the key changed).
+#            Then it's installed on an emulator, "Try demo mode" is tapped,
+#            and the run checks the dashboard goes live.
+#   iOS:     a simulator build, launched with APEXNORTH_AUTODEMO=1 so it races
+#            the demo on its own; the run checks laps are recorded. Building
+#            for a real iPhone needs an Apple team and signing (docs/mobile.md);
+#            without them the job only checks the device target compiles.
+#
+# Screenshots are attached as artifacts, and also printed (small, base64) in
+# the "Screenshot" steps so they can be read from the log.
+#
+# Nothing here publishes a release: mobile builds are test artifacts until
+# store distribution is set up.
+name: Mobile
+
+on:
+  push:
+    branches: [main, beta, mobile, "mobile/**"]
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android
+      - run: npm ci
+      - name: Build APK and AAB
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          echo "NDK: $NDK_HOME"
+          npx tauri android build --ci --apk --aab --target aarch64 x86_64
+      - name: Sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          apk="$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -1)"
+          aab="$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' | head -1)"
+          echo "APK: $apk"; echo "AAB: $aab"
+          ks="$RUNNER_TEMP/apexnorth.jks"
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$ks"
+            pass="$KEYSTORE_PASSWORD"; alias="$KEY_ALIAS"
+          else
+            echo "::notice::No ANDROID_KEYSTORE_BASE64 secret: signing with a throwaway test key."
+            pass="apexnorth-test"; alias="test"
+            keytool -genkeypair -keystore "$ks" -storepass "$pass" -keypass "$pass" -alias "$alias" \
+              -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=ApexNorth test build"
+          fi
+          mkdir -p out
+          "$tools/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" sign --ks "$ks" --ks-pass "pass:$pass" --ks-key-alias "$alias" \
+            --out out/ApexNorth-Android.apk "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" verify out/ApexNorth-Android.apk
+          cp "$aab" out/ApexNorth-Android.aab
+          ls -la out
+          unzip -l out/ApexNorth-Android.apk | grep -E "lib/|assets/" | head -20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ApexNorth-Android
+          path: out/*
+
+  android-emulator:
+    name: Android emulator demo race
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ApexNorth-Android
+          path: out
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash scripts/mobile/android-smoke.sh out/ApexNorth-Android.apk out
+      - name: Screenshots
+        if: always()
+        run: for f in out/*.jpg; do [ -f "$f" ] && { echo "== $f"; base64 -w0 "$f"; echo; }; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator
+          path: |
+            out/*.png
+            out/*.jpg
+            out/*.xml
+            out/*.txt
+
+  ios:
+    name: iOS simulator build + demo race
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ios
+      - run: npm ci
+      - name: Generate the Xcode project
+        run: |
+          npx tauri ios init --ci
+          plist="$(find src-tauri/gen/apple -name Info.plist -path '*_iOS*' | head -1)"
+          echo "Info.plist: $plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSLocalNetworkUsageDescription' "$plist"
+      - name: Check the device target compiles
+        run: cargo check --target aarch64-apple-ios --lib
+        working-directory: src-tauri
+      - name: Build for the simulator
+        run: npx tauri ios build --ci --target aarch64-sim
+      - name: Run the demo race in the simulator
+        run: bash scripts/mobile/ios-smoke.sh out
+      - name: Screenshots
+        if: always()
+        run: for f in out/*.jpg; do [ -f "$f" ] && { echo "== $f"; base64 -i "$f"; echo; }; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator
+          path: |
+            out/*.png
+            out/*.jpg
+            out/*.txt
+            out/*.zip
