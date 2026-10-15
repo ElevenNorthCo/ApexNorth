@@ -160,11 +160,14 @@ Apple requires every app on a real device to be signed.
 
 | | Desktop | Android | iOS |
 |---|---|---|---|
-| Builds | CI (Linux), as before | CI | CI (simulator); device target compiles |
-| Demo race, recording, engineer | ✓ | CI emulator | CI simulator |
-| UI at phone sizes | — | headless Chrome screenshots + emulator | headless Chrome screenshots + simulator |
+| Builds | ✓ CI (Linux) and `cargo test`, as before | ✓ CI: release APK (arm64 + x86_64) and AAB, signed | ✓ CI: simulator app; device target (`aarch64-apple-ios`) compiles |
+| Demo race: live, lap recorded, engineer | ✓ | ✓ CI emulator (API 34, Pixel 6) | ✓ CI simulator (iPhone, iOS 18) |
+| Portrait / landscape dashboard | — | ✓ emulator screenshots | ✓ simulator screenshot (portrait) |
+| UI at phone sizes, every view | — | ✓ headless Chrome screenshots | ✓ headless Chrome screenshots |
 | Live PS5 telemetry | ✓ (user's PS5) | **not yet** | **not yet** |
-| System voice audible | — | **not yet** (emulator has no audio check) | **not yet** |
+| System voice audible | — | **not yet** (CI checks the engineer's calls, not the sound) | **not yet** |
 | Physical device | ✓ | **not yet** | **not yet** (needs signing) |
+
+In CI on 2026-10-15 (run 4 of the Mobile workflow), the emulator and the simulator each raced the demo and produced the same engineer calls, in order: "You start P5 of 16…", "Lights out. Go, go, go!", "Great start! Up one place to P4.", lap 1 recorded in 63.3 s, then fuel and pit-window calls on iOS. That's the shared Rust engine and engineer running unchanged on both phones.
 
 **Still to test on hardware:** a live PS5 session from a real phone, both by manual IP and with **Find my PlayStation**; the iOS Local Network prompt; voice output and ducking of music; screen kept on; and returning from the background mid-session.
