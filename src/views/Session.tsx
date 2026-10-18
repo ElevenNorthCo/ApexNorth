@@ -55,7 +55,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
 
   return (
     <div className="scroll-thin h-full overflow-y-auto pb-16">
-      <div className="mx-auto max-w-5xl px-6 pt-6">
+      <div className="mx-auto max-w-5xl px-6 pt-6 max-sm:px-4 max-sm:pt-4">
         <button onClick={() => go({ name: "activity" })} className="tech flex items-center gap-1 text-[14px] text-white/70 hover:text-accent">
           <Back /> Activity
         </button>
@@ -70,7 +70,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
               <TrackArt venue={session.venue} outline={session.outline} fade="left" className="h-full w-full" />
             </div>
             <div className="absolute inset-0 bg-gradient-to-r from-[#070b0a] from-35% via-[#070b0a]/60 via-55% to-transparent" />
-            <div className="relative flex flex-1 items-center justify-between gap-6 p-6">
+            <div className="relative flex flex-1 items-center justify-between gap-6 p-6 max-sm:p-4">
               <div className="min-w-0">
                 {editing != null ? (
                   <form
@@ -103,7 +103,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                   <>
                     <h1 className="flex items-center gap-3">
                       <Flag country={session.country} height={22} />
-                      <span className="tech text-[30px] font-bold leading-none tracking-[0.04em]">{trackTitle(session)[0]}</span>
+                      <span className="tech text-[30px] font-bold leading-none tracking-[0.04em] max-sm:text-[22px]">{trackTitle(session)[0]}</span>
                       {session.trackId != null && (
                         <button title="Rename track" onClick={() => setEditing(session.trackName ?? "")} className="text-white/40 hover:text-accent">
                           <Pencil width={18} height={18} />
@@ -118,7 +118,9 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                   {session.totalLaps > 0 && ` · ${session.totalLaps} lap race distance`}
                 </div>
               </div>
-              <TrackOutline points={session.outline} size={96} stroke="white" strokeWidth={4} />
+              <div className="shrink-0 max-sm:hidden">
+                <TrackOutline points={session.outline} size={96} stroke="white" strokeWidth={4} />
+              </div>
             </div>
           </div>
         )}
@@ -128,7 +130,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
         {session && <TrackComparison session={session} all={all} />}
 
         <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Laps</h2>
-        <div className="overflow-hidden rounded-[14px] border border-laptime/50 bg-black/40 shadow-[0_0_14px_rgba(31,168,255,0.15)]">
+        <div className="overflow-x-auto rounded-[14px] border border-laptime/50 bg-black/40 shadow-[0_0_14px_rgba(31,168,255,0.15)]">
           <table className="w-full text-left">
             <thead className="tech text-[12px] text-white/50">
               <tr className="border-b border-white/10">
@@ -214,11 +216,11 @@ function KindPicker({ session, onChange }: { session: SessionSummary; onChange: 
   return (
     <div className="mt-5 flex flex-wrap items-center gap-4">
       <span className="tech text-[13px] text-white/50">Session type</span>
-      <div className="flex overflow-hidden rounded-[10px] border border-white/10 bg-black/40">
+      <div className="flex overflow-hidden rounded-[10px] border border-white/10 bg-black/40 max-sm:w-full max-sm:overflow-x-auto">
         <button
           onClick={() => set(null)}
           title={`Let ApexNorth decide (currently ${kindInfo(guessed).label})`}
-          className={`tech border-r border-white/10 px-4 py-2 text-[13px] ${current == null ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
+          className={`tech shrink-0 border-r border-white/10 px-4 py-2 text-[13px] max-sm:px-3 ${current == null ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
         >
           Auto
         </button>
@@ -228,7 +230,7 @@ function KindPicker({ session, onChange }: { session: SessionSummary; onChange: 
             <button
               key={k.value}
               onClick={() => set(k.value)}
-              className="tech border-r border-white/10 px-4 py-2 text-[13px] last:border-r-0"
+              className="tech shrink-0 border-r border-white/10 px-4 py-2 text-[13px] last:border-r-0 max-sm:px-3"
               style={
                 active
                   ? { color: k.color, background: `color-mix(in srgb, ${k.color} 14%, transparent)`, boxShadow: `inset 0 0 0 1.5px ${k.color}` }

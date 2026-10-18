@@ -25,6 +25,31 @@
   --color-fuel: #ffc81a;
 }
 
+/* Space the notch, camera cutout and system bars take (zero on desktop).
+   The app reports them as --an-inset-* (Android's WebView has no env() values,
+   and iOS's keep the portrait ones in a landscape-only app); env() is the
+   fallback until it does. */
+:root {
+  --safe-top: var(--an-inset-top, env(safe-area-inset-top, 0px));
+  --safe-right: var(--an-inset-right, env(safe-area-inset-right, 0px));
+  --safe-bottom: var(--an-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--an-inset-left, env(safe-area-inset-left, 0px));
+}
+
+#root {
+  box-sizing: border-box;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+/* Phones: no tap highlight or text-size inflation; taps feel immediate. */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
 html,
 body,
 #root {

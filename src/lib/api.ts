@@ -197,7 +197,7 @@ export interface Settings {
   voice: {
     enabled: boolean;
     piperPath: string;
-    /** A Piper .onnx path, "kokoro:<speaker>", or a Kokoro voice file (.pt/.npy/.bin). */
+    /** A Piper .onnx path, "kokoro:<speaker>", or a Kokoro voice file (.pt/.npy/.bin); "system:<id>" on phones. */
     modelPath: string;
     volume: number;
     lengthScale: number;
@@ -216,16 +216,24 @@ export interface BuildInfo {
   channel: "beta" | "stable";
   /** Beta build number. */
   build: number | null;
+  /** "macos", "windows", "linux", "android" or "ios". */
+  os: string;
+  /** A phone build: system voice, no in-app updates. */
+  mobile: boolean;
 }
 
 export type UpdateProgress =
   | { event: "started"; total: number | null }
   | { event: "downloading"; done: number; total: number | null }
-  | { event: "installing" };
+  | { event: "installing" }
+  /** Android: allow ApexNorth to install apps (the setting is open), then tap Update again. */
+  | { event: "needsPermission" };
 
 export const api = {
   buildInfo: () => invoke<BuildInfo>("build_info"),
   checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  /** iOS: the real safe areas in CSS px (null elsewhere). */
+  safeArea: () => invoke<Record<"top" | "right" | "bottom" | "left", number> | null>("safe_area"),
   /** Downloads and installs, then the app restarts (the promise only settles on failure). */
   installUpdate: (onProgress: (p: UpdateProgress) => void) => {
     const progress = new Channel<UpdateProgress>();
@@ -262,6 +270,9 @@ export const api = {
 export interface VoiceOption {
   value: string;
   label: string;
-  /** Bundled Kokoro voices ("kokoro" are the featured three), Kokoro voice files the user added, or Piper voices. */
-  group: "kokoro" | "kokoroMore" | "custom" | "piper";
+  /**
+   * Bundled Kokoro voices ("kokoro" are the featured three), Kokoro voice files the user added, or Piper voices.
+   * On phones, "system": the phone's own offline voices ("system:" = automatic).
+   */
+  group: "kokoro" | "kokoroMore" | "custom" | "piper" | "system";
 }

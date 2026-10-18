@@ -8,6 +8,9 @@ export function Connect() {
   const status = useStore((s) => s.status);
   const settings = useStore((s) => s.settings);
   const go = useStore((s) => s.go);
+  const os = useStore((s) => s.build?.os);
+  const mobile = !!useStore((s) => s.build?.mobile);
+  const device = mobile ? "phone" : "computer";
   const [manual, setManual] = useState(false);
   const [ip, setIp] = useState(settings?.lastIp ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +52,7 @@ export function Connect() {
   const slow = searchingSince != null && Date.now() - searchingSince > 12000;
 
   return (
-    <div className="scroll-thin h-full overflow-y-auto px-6 pb-16 pt-8">
+    <div className="scroll-thin h-full overflow-y-auto px-6 pb-16 pt-8 max-sm:px-4 max-sm:pt-5">
       <div className="mx-auto max-w-2xl">
         <h1 className="brand text-[44px] leading-none">
           CONNECT <span className="text-accent drop-shadow-[0_0_12px_rgba(57,255,122,0.5)]">GT7</span>
@@ -61,7 +64,7 @@ export function Connect() {
         <ol className="mt-8 space-y-4">
           <Step n={1} title="Get on track" state={step > 1 ? "done" : "active"}>
             <ul className="list-disc space-y-1 pl-5 text-[14px] text-muted">
-              <li>Make sure this computer and your PS5/PS4 are on the <b className="text-white">same network</b>.</li>
+              <li>Make sure this {device} and your PS5/PS4 are on the <b className="text-white">same network</b>{mobile && " (Wi-Fi, not mobile data)"}.</li>
               <li>In GT7, start any on-track session: race, time trial, lobby or practice.</li>
             </ul>
             {step === 1 && (
@@ -86,7 +89,14 @@ export function Connect() {
                     <ul className="list-disc space-y-1 pl-5">
                       <li>Be on track in GT7. Menus don't send telemetry.</li>
                       <li>Turn off "AP / client isolation" on your router, and avoid guest networks.</li>
-                      <li>On Windows, allow ApexNorth through the firewall (UDP port 33740).</li>
+                      {os === "windows" && <li>Allow ApexNorth through the Windows firewall (UDP port 33740).</li>}
+                      {os === "ios" && (
+                        <li>
+                          Allow local network access: iPhone Settings → Apps → ApexNorth → <b className="text-white">Local Network</b> on.
+                        </li>
+                      )}
+                      {mobile && <li>Keep ApexNorth open on screen: phones pause apps in the background.</li>}
+                      {mobile && <li>Only one telemetry app at a time: close ApexNorth (or other GT7 apps) on other devices.</li>}
                       <li>Enter the PlayStation IP manually: Settings → Network → View Connection Status.</li>
                       <li>5 GHz Wi-Fi or Ethernet gives the smoothest data.</li>
                     </ul>
@@ -132,13 +142,15 @@ export function Connect() {
                 value={ip}
                 onChange={(e) => setIp(e.target.value)}
                 placeholder="192.168.1.50"
+                inputMode="decimal"
+                autoComplete="off"
                 className="num flex-1 rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-[15px] outline-none focus:border-accent"
               />
               <Btn primary type="submit">Connect</Btn>
             </div>
             <p className="mt-2 text-[12px] text-muted">
               Find it on the PS5 under Settings → Network → Connection Status.
-              {localIps.length > 0 && <> This computer: {localIps.join(", ")}.</>}
+              {localIps.length > 0 && <> This {device}: {localIps.join(", ")}.</>}
             </p>
           </form>
         )}
@@ -170,7 +182,7 @@ function Step({ n, title, state, children }: { n: number; title: string; state: 
         </span>
         <h2 className="tech text-[16px] font-semibold">{title}</h2>
       </div>
-      {children && <div className="mt-3 pl-10">{children}</div>}
+      {children && <div className="mt-3 pl-10 max-sm:pl-0">{children}</div>}
     </li>
   );
 }

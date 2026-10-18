@@ -1,6 +1,6 @@
 # ApexNorth: guide for Claude
 
-ApexNorth is a GT7 live telemetry dashboard and race engineer. It is a Tauri 2 desktop app (Rust backend, React + TypeScript frontend) for macOS, Windows and Linux. The long-term goal is an AI race engineer you can chat with.
+ApexNorth is a GT7 live telemetry dashboard and race engineer. It is a Tauri 2 app (Rust backend, React + TypeScript frontend) for macOS, Windows, Linux and Android (released since 0.4.0), with iOS built for the user's own iPhone until there's an Apple Developer account (one codebase; see "Phones" below and `docs/mobile.md`). The long-term goal is an AI race engineer you can chat with.
 
 The README has the full feature list, the protocol details, and the **phase roadmap**. Check it before starting new feature work, and tick roadmap items off when they ship.
 
@@ -141,6 +141,22 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Never change the pubkey or lose the private key: installed apps only accept updates signed by it.
   - Updates download the full installer (~390 MB, mostly Kokoro). Splitting the voice out is a roadmap item.
 - macOS builds are ad-hoc signed (`signingIdentity: "-"`, `hardenedRuntime: false` so the bundled dylibs load).
+
+## Phones (Android, iOS)
+- **One codebase.** Everything in `src/` and `src-tauri/src/` is shared. Only these differ, behind `cfg(desktop)` / `cfg(mobile)` (set by tauri-build) and target-specific Cargo dependencies:
+  - Voice output: `engineer/voice.rs` (queue, priorities, interruptions) talks to a `Backend` trait. Desktop: `voice_wav.rs` (helper + rodio). Phones: `voice_native.rs` → `platform::PhoneSpeech` → `plugins/device` (Android TextToSpeech, iOS AVSpeechSynthesizer). Voice setting on phones is `system:` (best British voice) or `system:<voice id>`.
+  - Keep-screen-on: `platform::ScreenAwake`. Updater: desktop only (`updater.rs` has mobile stubs). `build_info` reports `os` and `mobile`; the UI reads it from the store (`build`).
+  - Never add a desktop-only crate to `[dependencies]`; put it under the desktop target table in `Cargo.toml`.
+- **Plugin calls block on the UI thread.** Never call `plugins/device` from the link thread while a command on the main thread might be joining it (`ScreenAwake::set` spawns a thread for this reason).
+- **No GPL in the phone apps.** The voice helper (espeak-ng) is desktop-only. Kokoro on phones needs a non-GPL phonemizer (`docs/mobile.md`).
+- **Android project** is committed (`src-tauri/gen/android`, made by `tauri android init`). Hand changes: landscape lock (`screenOrientation="sensorLandscape"` in the manifest; iOS: `Info.ios.plist`, user's choice 2026-10-17), `targetSdk 36` (Android 17's local network protection; don't raise it without a runtime permission), `MainActivity.kt` (full screen, insets → `--an-inset-*`), proguard keep for the bridge, icons. **iOS** `gen/apple` is generated in CI from `tauri.ios.conf.json` and `Info.ios.plist` (local network text, orientations).
+- **UI:** `useViewport()` (`lib/viewport.ts`): `compact` = under 900 × 520 (phones only; desktop windows can't be that small). Compact gets `MobileNav` (bottom tabs) instead of `TopBar`, and the dashboard's `PORTRAIT` layout when upright (`LANDSCAPE` is the desktop canvas; tweak tile positions in the layout tables in `Dashboard.tsx`). Use `max-sm:` variants for phone reflow; check with `scripts/mobile/ui-shots.mjs` (screenshots at phone/desktop sizes from the `ui_fixture` demo race, no backend).
+- **Android releases and updates:** `release.yml`'s Android job ships `ApexNorth-Android.apk` with every beta and release, signed with the release key (secrets `ANDROID_KEYSTORE_*`, `ANDROID_KEY_ALIAS`; the user keeps the keystore at `~/ApexNorth-Android-Release-Key/`). Never change that key: installed apps only update from APKs it signed. The APK is `android-aarch64` in `latest.json`; `updater.rs` (Android) reads it, `DevicePlugin.kt` downloads it and opens the installer (FileProvider, `REQUEST_INSTALL_PACKAGES`). iOS can't self-update (TestFlight later).
+- **iPhone for the user:** `apexnorth-ios` (`scripts/mobile/ios-install.sh`, linked into `~/.local/bin`) pulls, builds with the team from `~/.config/apexnorth/ios.env` (never commit the team ID; `gen/apple` is git-ignored), installs over Wi-Fi with `devicectl` and opens the app. Free Apple ID: builds last 7 days. `xcode-select` points at the CLT on this Mac and Tauri ignores `DEVELOPER_DIR`, so the script shims `xcodebuild`/`xcrun`; CocoaPods lives in `~/.cocoapods-gems` (Homebrew's portable Ruby).
+- **iPhone safe areas:** UIKit/WebKit report portrait insets in the landscape-only app; the page uses `safe_area` (plugin `safeArea`, which rotates them) as `--an-inset-*`. Phone landscape widens the dashboard canvas to the screen's shape (`widen()` in `Dashboard.tsx`, up to 2.3 : 1).
+- **Icons:** Android's adaptive foreground is the art at 2/3 size on `#040706` (the visible part of an adaptive icon); iOS uses `src-tauri/icons/ios` (no alpha), copied into `gen/apple` after `ios init` (CI and the script do it).
+- **CI:** `.github/workflows/mobile.yml` (Android APK/AAB + emulator demo race, iOS simulator build + demo race via `APEXNORTH_AUTODEMO=1`). Screenshots are printed base64 in the logs. Nothing is published; desktop `release.yml` is untouched.
+- This sandbox can't download the Android SDK/NDK (dl.google.com is blocked), so Android/iOS builds are checked in CI. `cargo check --target x86_64-linux-android --lib` with host clang (`CC_x86_64_linux_android=clang`, `CFLAGS_x86_64_linux_android="--target=x86_64-linux-android24 -isystem /usr/include -isystem /usr/include/x86_64-linux-gnu"`) catches Rust errors in `cfg(mobile)` code quickly.
 
 ## Website
 - [apexnorth.app](https://apexnorth.app) is the product site. It forwards to `elevennorth.co/apexnorth`, which the user runs outside this repo. Don't build a site here; just link to apexnorth.app.

@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
-import { api, type ConnStatus, type LapSummary, type LiveState, type Settings } from "./api";
+import { api, type BuildInfo, type ConnStatus, type LapSummary, type LiveState, type Settings } from "./api";
 
 export type View =
   | { name: "connect" }
@@ -15,6 +15,8 @@ interface Store {
   status: ConnStatus;
   live: LiveState | null;
   settings: Settings | null;
+  /** Platform and update channel; null until the backend answers. */
+  build: BuildInfo | null;
   engineer: { text: string; at: number } | null;
   voiceError: string | null;
   lastLap: LapSummary | null;
@@ -29,6 +31,7 @@ export const useStore = create<Store>((set) => ({
   status: { state: "idle", ip: null, variant: null, hz: 0, error: null },
   live: null,
   settings: null,
+  build: null,
   engineer: null,
   voiceError: null,
   lastLap: null,
@@ -46,10 +49,11 @@ let started = false;
 export async function startBridge() {
   if (started) return;
   started = true;
-  const [status, settings] = await Promise.all([api.getStatus(), api.getSettings()]);
+  const [status, settings, build] = await Promise.all([api.getStatus(), api.getSettings(), api.buildInfo()]);
   useStore.setState({
     status,
     settings,
+    build,
     view: status.state === "idle" && !settings.lastIp ? { name: "connect" } : { name: "dashboard" },
   });
   await listen<LiveState>("telemetry", (e) => useStore.setState({ live: e.payload }));

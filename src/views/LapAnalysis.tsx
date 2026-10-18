@@ -250,8 +250,8 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   const sectorDelta = (i: number) => (cmp && lap.sectorsMs[i] != null && cmp.sectorsMs[i] != null ? lap.sectorsMs[i] - cmp.sectorsMs[i] : null);
 
   return (
-    <div className="flex h-full bg-ink">
-      <div className="relative h-full w-[52%] min-w-[360px]">
+    <div className="flex h-full bg-ink max-sm:flex-col">
+      <div className="relative h-full w-[52%] min-w-[360px] max-sm:h-[42%] max-sm:w-full max-sm:min-w-0 max-sm:shrink-0">
         <TrackMap
           samples={samples}
           compare={cmp?.samples}
@@ -288,8 +288,8 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         </div>
       </div>
 
-      <div className="scroll-thin flex-1 overflow-y-auto border-l border-accent/20 bg-panel px-5 pb-10 pt-5">
-        <div className="flex items-baseline justify-between">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto border-l border-accent/20 bg-panel px-5 pb-10 pt-5 max-sm:border-l-0 max-sm:border-t max-sm:px-4 max-sm:pt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4">
           <div>
             <div className="text-[13px] text-white/50">
               {lap.trackName ?? "Unknown track"} · {carName(lap.carCode, lap.carName)}

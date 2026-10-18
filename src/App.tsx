@@ -7,10 +7,16 @@ import { SessionView } from "./views/Session";
 import { LapAnalysis } from "./views/LapAnalysis";
 import { SettingsView } from "./views/Settings";
 import { TopBar } from "./components/TopBar";
+import { MobileNav } from "./components/MobileNav";
+import { useViewport } from "./lib/viewport";
+import { useUpdateChecks } from "./lib/updates";
 
 export default function App() {
   const view = useStore((s) => s.view);
   const [navOpen, setNavOpen] = useState(false);
+  // Phones get a bottom tab bar instead of the desktop toolbar.
+  const { compact, portrait } = useViewport();
+  useUpdateChecks();
 
   useEffect(() => {
     startBridge().catch((e) => console.error("bridge", e));
@@ -23,18 +29,23 @@ export default function App() {
     return (
       <div className="relative h-full w-full">
         <Dashboard navOpen={navOpen} onToggleNav={() => setNavOpen((o) => !o)} />
-        {navOpen && (
-          <div className="absolute inset-x-0 top-0">
-            <TopBar />
-          </div>
-        )}
+        {navOpen &&
+          (compact ? (
+            <div className="absolute inset-x-0 bottom-0">
+              <MobileNav slim={!portrait} />
+            </div>
+          ) : (
+            <div className="absolute inset-x-0 top-0">
+              <TopBar />
+            </div>
+          ))}
       </div>
     );
   }
 
   return (
     <div className="an-bg flex h-full w-full flex-col">
-      {view.name !== "lap" && <TopBar />}
+      {view.name !== "lap" && !compact && <TopBar />}
       <main className="relative min-h-0 flex-1">
         {view.name === "connect" && <Connect />}
         {view.name === "activity" && <Activity />}
@@ -42,6 +53,7 @@ export default function App() {
         {view.name === "lap" && <LapAnalysis lapId={view.lapId} sessionId={view.sessionId} />}
         {view.name === "settings" && <SettingsView />}
       </main>
+      {compact && view.name !== "lap" && <MobileNav slim={!portrait} />}
     </div>
   );
 }

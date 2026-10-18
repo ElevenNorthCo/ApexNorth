@@ -113,6 +113,7 @@ impl Settings {
 }
 
 /// Look for a `piper` executable on PATH and in common install locations.
+#[cfg_attr(mobile, allow(dead_code))]
 pub fn find_piper() -> Option<PathBuf> {
     let exe = if cfg!(windows) { "piper.exe" } else { "piper" };
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
@@ -127,6 +128,7 @@ pub fn find_piper() -> Option<PathBuf> {
 }
 
 /// Find Piper voice models (`*.onnx` with a matching `.onnx.json`).
+#[cfg_attr(mobile, allow(dead_code))]
 pub fn find_voices(extra_dirs: &[PathBuf]) -> Vec<String> {
     let mut dirs = extra_dirs.to_vec();
     if let Some(home) = dirs::home_dir() {

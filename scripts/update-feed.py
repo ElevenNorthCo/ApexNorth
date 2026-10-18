@@ -25,6 +25,9 @@ PLATFORMS = {
     "ApexNorth-Windows-Setup.exe": ["windows-x86_64"],
     "ApexNorth-Linux.AppImage": ["linux-x86_64"],
     "ApexNorth-Linux.deb": ["linux-x86_64-deb"],
+    # Not used by tauri's updater: the Android app reads this key itself
+    # (updater.rs), downloads the APK and opens the system installer.
+    "ApexNorth-Android.apk": ["android-aarch64"],
 }
 
 

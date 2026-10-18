@@ -42,22 +42,22 @@ export function Activity() {
 
   return (
     <div className="scroll-thin h-full overflow-y-auto pb-16">
-      <div className="mx-auto max-w-[1400px] px-8">
-        <header className="flex flex-wrap items-end justify-between gap-6 pb-6 pt-8">
+      <div className="mx-auto max-w-[1400px] px-8 max-sm:px-4">
+        <header className="flex flex-wrap items-end justify-between gap-6 pb-6 pt-8 max-sm:gap-4 max-sm:pb-4 max-sm:pt-5">
           <div>
-            <h1 className="brand text-[52px] leading-none">
+            <h1 className="brand text-[52px] leading-none max-sm:text-[38px]">
               YOUR <span className="text-accent drop-shadow-[0_0_12px_rgba(57,255,122,0.5)]">ACTIVITY</span>
             </h1>
             <div className="tech mt-2 text-[14px] italic tracking-[0.3em] text-white/60">Recent sessions, laps and races</div>
           </div>
-          <div className="flex overflow-hidden rounded-[12px] border border-white/10 bg-black/40">
+          <div className="flex overflow-hidden rounded-[12px] border border-white/10 bg-black/40 max-sm:w-full max-sm:overflow-x-auto">
             {[{ value: "all" as const, label: "All", color: "#39ff7a" }, ...KINDS].map((k) => {
               const active = filter === k.value;
               return (
                 <button
                   key={k.value}
                   onClick={() => setFilter(k.value)}
-                  className="tech border-r border-white/10 px-6 py-3 text-[14px] font-medium transition last:border-r-0"
+                  className="tech shrink-0 whitespace-nowrap border-r border-white/10 px-6 py-3 text-[14px] font-medium transition last:border-r-0 max-sm:flex-1 max-sm:px-2.5 max-sm:text-[11px]"
                   style={
                     active
                       ? { color: k.color, background: `color-mix(in srgb, ${k.color} 12%, transparent)`, boxShadow: `inset 0 0 0 1.5px ${k.color}, 0 0 12px color-mix(in srgb, ${k.color} 35%, transparent)` }
@@ -106,7 +106,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
   return (
     <button
       onClick={onOpen}
-      className="group relative flex h-[208px] w-full items-stretch overflow-hidden rounded-[16px] text-left transition hover:brightness-110"
+      className="group relative flex h-[208px] w-full items-stretch overflow-hidden rounded-[16px] text-left transition hover:brightness-110 max-sm:h-auto max-sm:flex-col"
       style={{
         border: `1.5px solid ${c}`,
         background: "linear-gradient(90deg, rgba(10,16,15,0.95), rgba(6,9,8,0.95))",
@@ -117,7 +117,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
 
       <TrackArt venue={s.venue} outline={s.outline} className="w-[170px] shrink-0 max-md:hidden" />
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between py-5 pl-5 pr-2">
+      <div className="flex min-w-0 flex-1 flex-col justify-between py-5 pl-5 pr-2 max-sm:gap-3 max-sm:pb-3 max-sm:pr-8 max-sm:pt-4">
         <div>
           <div className="flex items-start gap-3">
             <span className="mt-[2px]"><Flag country={s.country} height={20} /></span>
@@ -158,7 +158,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
         </div>
       </div>
 
-      <div className="my-5 grid w-[310px] shrink-0 grid-cols-[1fr_1.3fr] content-center gap-x-5 gap-y-4 border-l border-white/10 px-6">
+      <div className="my-5 grid w-[310px] shrink-0 grid-cols-[1fr_1.3fr] content-center gap-x-5 gap-y-4 border-l border-white/10 px-6 max-sm:mx-5 max-sm:mb-4 max-sm:mt-0 max-sm:w-auto max-sm:border-l-0 max-sm:border-t max-sm:px-0 max-sm:pt-3">
         <Stat label="Laps">{s.lapCount}</Stat>
         <Stat label="Best Lap" color="#39ff7a" big>
           {lapTime(s.bestMs)}
@@ -169,7 +169,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
         </Stat>
       </div>
 
-      <div className="my-5 flex w-[56px] shrink-0 items-center justify-center border-l border-white/10" style={{ color: c }}>
+      <div className="my-5 flex w-[56px] shrink-0 items-center justify-center border-l border-white/10 max-sm:hidden" style={{ color: c }}>
         <ChevronRight width={32} height={32} className="transition group-hover:translate-x-1" />
       </div>
     </button>
