@@ -94,11 +94,13 @@ Go to the [**latest release**](https://github.com/ElevenNorthCo/ApexNorth/releas
 | Mac with an Intel chip | `ApexNorth-macOS-Intel.dmg` |
 | Windows 10 or 11 | `ApexNorth-Windows-Setup.exe` |
 | Linux | `ApexNorth-Linux.AppImage` or `ApexNorth-Linux.deb` |
+| Android phone or tablet (new in 0.4.0) | `ApexNorth-Android.apk` |
 
 Not sure which Mac you have? Click the Apple menu → **About This Mac**. "Chip: Apple M…" means Apple Silicon. "Processor: Intel" means Intel.
 
 - **Mac:** open the `.dmg` and drag **ApexNorth** into **Applications**. The first time you open it, macOS says it can't check the app, because ApexNorth isn't registered with Apple (that costs $99 a year). Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only do this once. The one-command install skips this step.
 - **Windows:** run the setup file. If a blue *Windows protected your PC* box appears, click **More info → Run anyway**.
+- **Android:** open the `.apk` on your phone (download it there, or copy it over). Android asks to allow installs from your browser or file manager: allow it, then **Install**. The phone uses its own voice for the engineer (Kokoro is desktop-only for now). iPhone isn't released yet: see [docs/mobile.md](docs/mobile.md).
 - **Firewall:** the first time ApexNorth connects, Windows Firewall (or macOS) may ask to allow it on the network. Say **Allow**, or it can't hear your PlayStation.
 
 ### Updates
@@ -471,17 +473,22 @@ The tests cover:
 - [x] **Milestone:** 0.2.0, the first release with Kokoro voices and the beta channel
 - [x] **Milestone:** 0.3.1, in-app updates verified end to end (beta 22 → beta 26 installed and restarted in the app); Emma is the default voice; **Reset** for voice volume and speed
 
-### 🚧 Phase 4.5: Android and iPhone (branch `mobile`)
+### 🚧 Phase 4.5: Android and iPhone
 The same app on phones, connecting straight to the PlayStation: no computer needed. See [docs/mobile.md](docs/mobile.md).
 - [x] One codebase: engine, engineer, strategy, storage and UI shared by all five platforms; desktop-only pieces (Kokoro helper, rodio, keep-awake, in-app updates) behind `cfg(desktop)`
 - [x] Android project and an in-repo plugin for the phone's offline voice and keep-screen-on
 - [x] Race engineer on phones: the same rules and queue, spoken by the system voice (Kokoro on phones is a follow-up: espeak-ng is GPL)
 - [x] Phone layouts: portrait dashboard (same tiles, stacked), landscape sim-dash, bottom tab bar, safe areas, reflowed Activity/Session/Lap analysis/Settings
 - [x] CI: Android APK/AAB and an emulator demo race; iOS simulator build and demo race
+- [x] Landscape-only on phones; the dashboard widens to fill the screen; real safe areas on iPhone; proper app icons
+- [x] Android in every release (`ApexNorth-Android.apk`, signed with the release key), with the **Update** button: it downloads the new APK and Android installs it
+- [x] iPhone test builds over Wi-Fi from a Mac (`scripts/mobile/ios-install.sh`)
+- [x] **Milestone:** 0.4.0, the first release with Android
+- [x] Real Android phone: installs, voice works
 - [ ] Live PS5 test from a real Android phone and iPhone
 - [ ] Kokoro voices on phones (non-GPL phonemizer)
 - [ ] Android 17 local network permission (then raise `targetSdk`)
-- [ ] Test builds for testers (APK on the beta release, TestFlight)
+- [ ] iPhone for testers: TestFlight (needs the Apple Developer Program, planned with the LLC)
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application

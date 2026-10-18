@@ -275,17 +275,18 @@ export function SettingsView() {
 
 /** This app's version and channel, a manual check, and the update when there is one. */
 function Updates({ version, build }: { version: string; build: BuildInfo | null }) {
-  if (build?.mobile) {
+  // iOS apps can't update themselves: TestFlight / the App Store does it.
+  if (build?.os === "ios") {
     return (
-      <Row label={`ApexNorth v${version}`} hint={`${build.os === "ios" ? "iPhone / iPad" : "Android"} · updates come from the app store or a new test build`}>
+      <Row label={`ApexNorth v${version}`} hint="iPhone / iPad · updates come from TestFlight or the App Store">
         <span />
       </Row>
     );
   }
-  return <DesktopUpdates version={version} build={build} />;
+  return <InAppUpdates version={version} build={build} />;
 }
 
-function DesktopUpdates({ version, build }: { version: string; build: BuildInfo | null }) {
+function InAppUpdates({ version, build }: { version: string; build: BuildInfo | null }) {
   const offer = useUpdates((s) => s.offer);
   const check = useUpdates((s) => s.check);
   const install = useUpdates((s) => s.install);
@@ -306,7 +307,13 @@ function DesktopUpdates({ version, build }: { version: string; build: BuildInfo 
       {offer && (
         <Row
           label={`Update available: v${offer.version}`}
-          hint={offer.manual ? "Opens the download page" : (offer.notes ?? "Downloads, installs and restarts the app")}
+          hint={
+            offer.manual
+              ? "Opens the download page"
+              : install.step === "permission"
+                ? "Android needs your OK first: turn on \"Allow from this source\" for ApexNorth, come back, then tap again"
+                : (offer.notes ?? (build?.os === "android" ? "Downloads it, then Android asks to update" : "Downloads, installs and restarts the app"))
+          }
         >
           <UpdateButton />
         </Row>

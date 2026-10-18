@@ -21,14 +21,18 @@ export function UpdateButton() {
           : `Downloading ${state.pct}%`
         : state.step === "installing"
           ? "Installing…"
-          : "Update failed · Download";
+          : state.step === "permission"
+            ? "Allowed? Tap to install"
+            : "Update failed · Download";
   const title =
     state.step === "ready"
       ? offer.manual
         ? `ApexNorth ${offer.version} is out. Opens the download page.`
         : `ApexNorth ${offer.version} is out. Click to download and install it; the app restarts when it's done.`
-      : state.step === "failed"
-        ? `${state.error}\nClick to open the download page instead.`
+      : state.step === "permission"
+        ? "Turn on \"Allow from this source\" for ApexNorth, come back, then tap again."
+        : state.step === "failed"
+          ? `${state.error}\nClick to open the download page instead.`
         : "Keep ApexNorth open; it restarts when the update is installed.";
   const failed = state.step === "failed";
 

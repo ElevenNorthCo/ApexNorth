@@ -468,6 +468,28 @@ fn build_info() -> updater::BuildInfo {
     updater::build_info()
 }
 
+/// iOS: the screen's real safe areas (WebKit reports portrait ones in a
+/// landscape-only app). None elsewhere: Android's activity reports its own,
+/// and desktop has none.
+#[tauri::command]
+async fn safe_area(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    #[cfg(target_os = "ios")]
+    {
+        use tauri_plugin_apexnorth_device::DeviceExt;
+        // The plugin answers on the UI thread: wait for it off the async workers.
+        let insets = tauri::async_runtime::spawn_blocking(move || app.device().safe_area())
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        return serde_json::to_value(insets).map(Some).map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = app;
+        Ok(None)
+    }
+}
+
 /// A newer signed release for this channel (stable or beta), if there is one.
 #[tauri::command]
 async fn check_update(app: AppHandle, pending: State<'_, updater::Pending>) -> Result<Option<updater::UpdateInfo>, String> {
@@ -629,6 +651,7 @@ pub fn run() {
             build_info,
             check_update,
             install_update,
+            safe_area,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

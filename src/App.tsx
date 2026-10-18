@@ -9,12 +9,14 @@ import { SettingsView } from "./views/Settings";
 import { TopBar } from "./components/TopBar";
 import { MobileNav } from "./components/MobileNav";
 import { useViewport } from "./lib/viewport";
+import { useUpdateChecks } from "./lib/updates";
 
 export default function App() {
   const view = useStore((s) => s.view);
   const [navOpen, setNavOpen] = useState(false);
   // Phones get a bottom tab bar instead of the desktop toolbar.
   const { compact, portrait } = useViewport();
+  useUpdateChecks();
 
   useEffect(() => {
     startBridge().catch((e) => console.error("bridge", e));

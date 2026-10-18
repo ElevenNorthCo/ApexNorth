@@ -1,5 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useEffect } from "react";
 import { create } from "zustand";
 import { api, type UpdateInfo } from "./api";
 
@@ -54,6 +55,8 @@ export type Install =
   | { step: "ready" }
   | { step: "downloading"; pct: number | null }
   | { step: "installing" }
+  /** Android: waiting for the user to allow installs; tapping again installs. */
+  | { step: "permission" }
   | { step: "failed"; error: string };
 
 interface Updates {
@@ -86,14 +89,32 @@ export const useUpdates = create<Updates>((set, get) => ({
       openUrl(RELEASES_URL);
       return;
     }
-    if (install.step !== "ready") return;
+    if (install.step !== "ready" && install.step !== "permission") return;
     set({ install: { step: "downloading", pct: null } });
     api
       .installUpdate((p) => {
         if (p.event === "installing") set({ install: { step: "installing" } });
+        else if (p.event === "needsPermission") set({ install: { step: "permission" } });
         else if (p.event === "downloading")
           set({ install: { step: "downloading", pct: p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : null } });
       })
+      // Desktop restarts before this. Android has opened its installer: if
+      // the user backs out of it, the button works again.
+      .then(() => get().install.step === "installing" && set({ install: { step: "ready" } }))
       .catch((e) => set({ install: { step: "failed", error: String(e) } }));
   },
 }));
+
+/** A few seconds after launch, then every 6 hours: is there a newer release? */
+export function useUpdateChecks() {
+  const checkNow = useUpdates((s) => s.checkNow);
+  useEffect(() => {
+    const check = () => void checkNow();
+    const t = setTimeout(check, 4000);
+    const id = setInterval(check, 6 * 60 * 60 * 1000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(id);
+    };
+  }, [checkNow]);
+}

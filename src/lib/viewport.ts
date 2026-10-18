@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { api } from "./api";
 
 /**
  * Screen shape, for adapting layouts to phones. Desktop windows can't get
@@ -47,23 +48,42 @@ declare global {
 
 /**
  * Keep `--an-inset-*` up to date with the space the camera cutout and system
- * bars take. iOS fills in CSS env(safe-area-inset-*) itself; Android's
- * WebView doesn't, so the app's activity reports them.
+ * bars take. Android's WebView doesn't fill in CSS env(safe-area-inset-*) for
+ * an edge-to-edge app, and iOS's keeps the portrait values in a landscape-only
+ * app, so the app reports them itself (Android: the activity's bridge; iOS:
+ * the `safe_area` command).
  */
 export function watchInsets() {
-  const bridge = window.ApexNorthAndroid;
-  if (!bridge) return;
-  const apply = () => {
-    try {
-      const i = JSON.parse(bridge.insets()) as Record<"top" | "right" | "bottom" | "left", number>;
-      for (const side of ["top", "right", "bottom", "left"] as const) {
-        document.documentElement.style.setProperty(`--an-inset-${side}`, `${Math.round(i[side] ?? 0)}px`);
-      }
-    } catch (e) {
-      console.warn("insets", e);
+  const set = (i: Record<"top" | "right" | "bottom" | "left", number>) => {
+    for (const side of ["top", "right", "bottom", "left"] as const) {
+      document.documentElement.style.setProperty(`--an-inset-${side}`, `${Math.round(i[side] ?? 0)}px`);
     }
   };
-  apply();
-  window.addEventListener("an-insets", apply);
-  window.addEventListener("resize", apply);
+  const bridge = window.ApexNorthAndroid;
+  if (bridge) {
+    const apply = () => {
+      try {
+        set(JSON.parse(bridge.insets()));
+      } catch (e) {
+        console.warn("insets", e);
+      }
+    };
+    apply();
+    window.addEventListener("an-insets", apply);
+    window.addEventListener("resize", apply);
+    return;
+  }
+  if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
+  const ask = () =>
+    api
+      .safeArea()
+      .then((i) => i && set(i))
+      .catch((e) => console.warn("safe area", e));
+  // Rotation settles after the resize event: ask now and once it has.
+  const update = () => {
+    void ask();
+    setTimeout(ask, 400);
+  };
+  update();
+  window.addEventListener("resize", update);
 }

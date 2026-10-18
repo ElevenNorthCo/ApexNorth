@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { clock } from "../lib/format";
-import { useUpdates } from "../lib/updates";
 import { useStore, type View } from "../lib/store";
 import { Brand } from "./Brand";
 import { linkBadge } from "./MobileNav";
@@ -24,17 +23,6 @@ export function TopBar() {
     const id = setInterval(() => setNow(clock()), 5000);
     return () => clearInterval(id);
   }, []);
-  // A few seconds after launch, then every 6 hours: is there a newer release?
-  const checkUpdates = useUpdates((s) => s.checkNow);
-  useEffect(() => {
-    const check = () => void checkUpdates();
-    const t = setTimeout(check, 4000);
-    const id = setInterval(check, 6 * 60 * 60 * 1000);
-    return () => {
-      clearTimeout(t);
-      clearInterval(id);
-    };
-  }, [checkUpdates]);
 
   const [text, color] = linkBadge(status, paused);
 

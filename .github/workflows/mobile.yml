@@ -150,7 +150,10 @@ jobs:
           key: ios
       - run: npm ci
       - name: Generate the Xcode project
-        run: npx tauri ios init --ci
+        run: |
+          npx tauri ios init --ci
+          # ios init leaves Tauri's placeholder icon: use ApexNorth's.
+          cp src-tauri/icons/ios/*.png src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
       - name: Check the device target compiles
         run: cargo check --target aarch64-apple-ios --lib
         working-directory: src-tauri

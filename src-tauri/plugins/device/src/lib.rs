@@ -2,7 +2,9 @@
 //!
 //! - the system's offline text-to-speech (Android `TextToSpeech`, iOS
 //!   `AVSpeechSynthesizer`), which speaks the race engineer on phones;
-//! - keeping the screen on while telemetry is live.
+//! - keeping the screen on while telemetry is live;
+//! - Android in-app updates: fetch the feed, download the APK, open the
+//!   system installer.
 //!
 //! Kotlin lives in `android/`, Swift in `ios/`. On desktop every call
 //! returns [`Error::Unsupported`]; the app uses its own engine there.
@@ -65,6 +67,38 @@ pub struct SystemVoice {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Status {
     pub speaking: bool,
+}
+
+/// Space the notch and home indicator take, in points (iOS).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Insets {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+}
+
+/// How the update download is going (Android).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Download {
+    /// "idle", "downloading", "done" or "failed".
+    pub state: String,
+    pub done: u64,
+    /// -1 when the server didn't say.
+    pub total: i64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct Text {
+    pub text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Installed {
+    pub needs_permission: bool,
 }
 
 #[derive(Debug, Deserialize)]

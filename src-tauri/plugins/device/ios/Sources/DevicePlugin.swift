@@ -16,9 +16,10 @@ struct KeepAwakeArgs: Decodable {
   let on: Bool
 }
 
-/// The race engineer's voice on iOS (AVSpeechSynthesizer, on-device voices)
-/// and keeping the screen on while racing. Called from the app's Rust code
-/// (`NativeSpeech` in lib.rs), never from JavaScript.
+/// The race engineer's voice on iOS (AVSpeechSynthesizer, on-device voices),
+/// keeping the screen on while racing, and the screen's real safe areas for
+/// the page. Called from the app's Rust code (`NativeSpeech` in lib.rs),
+/// never from JavaScript.
 class DevicePlugin: Plugin, AVSpeechSynthesizerDelegate {
   private let synth = AVSpeechSynthesizer()
   private let lock = NSLock()
@@ -30,6 +31,31 @@ class DevicePlugin: Plugin, AVSpeechSynthesizerDelegate {
   override init() {
     super.init()
     synth.delegate = self
+  }
+
+  /// The page sizes itself to the safe area; WebKit mustn't inset it again.
+  override func load(webview: WKWebView) {
+    webview.scrollView.contentInsetAdjustmentBehavior = .never
+  }
+
+  /// The window's real safe areas. In a landscape-only app WebKit's
+  /// env(safe-area-inset-*) keeps the portrait values (bands top and bottom,
+  /// nothing at the notch), so the page asks here and uses --an-inset-*.
+  @objc public func safeArea(_ invoke: Invoke) throws {
+    DispatchQueue.main.async {
+      let window = UIApplication.shared.connectedScenes
+        .compactMap { ($0 as? UIWindowScene)?.windows.first { $0.isKeyWindow } ?? ($0 as? UIWindowScene)?.windows.first }
+        .first
+      var i = window?.safeAreaInsets ?? .zero
+      // UIKit can keep the portrait insets on a landscape-only window
+      // (seen on iOS 26: a 956 × 440 window with top 62, bottom 34). Turn
+      // them the way the window is: the notch's depth at both sides, as
+      // Safari does, and the landscape home indicator's height at the bottom.
+      if let b = window?.bounds, b.width > b.height, i.left == 0, i.right == 0, i.top > 0 {
+        i = UIEdgeInsets(top: 0, left: i.top, bottom: i.bottom > 0 ? 21 : 0, right: i.top)
+      }
+      invoke.resolve(["top": i.top, "right": i.right, "bottom": i.bottom, "left": i.left])
+    }
   }
 
   @objc public func prepare(_ invoke: Invoke) throws {

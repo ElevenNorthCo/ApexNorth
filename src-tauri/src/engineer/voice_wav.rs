@@ -207,3 +207,31 @@ fn synthesize_cli(s: &VoiceSettings, cache_dir: &Path, text: &str) -> Result<Pat
     std::fs::rename(&tmp, &out).map_err(|e| e.to_string())?;
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The whole desktop chain the app runs: the bundled helper renders a
+    /// phrase in Emma's voice and rodio plays it on the default output
+    /// (audible). Needs `scripts/fetch-voice.py` and a sound device.
+    #[test]
+    #[ignore]
+    fn plays_emma_through_the_speakers() {
+        let dir: PathBuf = std::env::var("APEXNORTH_TTS_DIR").map(Into::into).unwrap_or_else(|_| "resources/tts".into());
+        let cache = std::env::temp_dir().join(format!("apexnorth-play-test-{}", std::process::id()));
+        let mut backend = WavBackend::new(Some(dir), cache);
+        let s = VoiceSettings { model_path: "kokoro:bf_emma".into(), ..VoiceSettings::default() };
+        backend.load(&s).unwrap();
+        let wav = backend.prepare(&s, "Radio check. Desktop voice is working.").unwrap();
+        let started = Instant::now();
+        let playing = backend.play(wav, &s).unwrap();
+        while !playing.finished() {
+            assert!(started.elapsed() < Duration::from_secs(15), "playback never finished");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let secs = started.elapsed().as_secs_f32();
+        println!("played {secs:.2} s");
+        assert!(secs > 1.0, "played only {secs} s: nothing came out");
+    }
+}

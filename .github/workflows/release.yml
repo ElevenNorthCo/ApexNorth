@@ -15,6 +15,13 @@
 #   In-app updates: every build is signed with the updater key (secrets
 #             TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]) and the release gets a
 #             latest.json (scripts/update-feed.py) that the app checks.
+#   Android:  the release also carries ApexNorth-Android.apk (arm64 phones),
+#             signed with the release key (secrets ANDROID_KEYSTORE_BASE64,
+#             ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS; every APK must use
+#             the same key or installed apps can't update). It's in
+#             latest.json as "android-aarch64" for the app's Update button.
+#             iOS isn't released here (it needs an Apple developer account;
+#             see docs/mobile.md).
 #   Test run: push a commit to any branch whose message contains
 #             [build installers] (builds, no release; the installers are
 #             attached to the run as artifacts)
@@ -198,9 +205,74 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  android:
+    name: Android
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-release
+      - run: npm ci
+      - name: Build APK
+        env:
+          APEXNORTH_CHANNEL: ${{ needs.plan.outputs.channel }}
+          APEXNORTH_BUILD: ${{ github.run_number }}
+          APP_VERSION: ${{ needs.plan.outputs.app }}
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          npx tauri android build --ci --apk --target aarch64 --config "{\"version\":\"$APP_VERSION\"}"
+      - name: Sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEYSTORE_BASE64" ]]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set: release APKs must be signed with the release key."
+            exit 1
+          fi
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          apk="$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -1)"
+          ks="$RUNNER_TEMP/apexnorth.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$ks"
+          mkdir -p out
+          "$tools/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" sign --ks "$ks" --ks-pass "pass:$KEYSTORE_PASSWORD" --ks-key-alias "$KEY_ALIAS" \
+            --out out/ApexNorth-Android.apk "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" verify out/ApexNorth-Android.apk
+          rm -f out/*.idsig
+          # The update feed only lists signed files (update-feed.py).
+          if [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            npx tauri signer sign out/ApexNorth-Android.apk
+          fi
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ApexNorth-Android
+          path: out/*
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [plan, build]
+    needs: [plan, build, android]
     if: needs.plan.outputs.tag != ''
     runs-on: ubuntu-latest
     # Two beta pushes in a row publish one after the other.

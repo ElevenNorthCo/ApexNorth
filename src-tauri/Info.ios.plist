@@ -10,16 +10,14 @@
   <true/>
   <key>UIViewControllerBasedStatusBarAppearance</key>
   <false/>
+  <!-- Landscape only: the dashboard is a landscape sim-dash. -->
   <key>UISupportedInterfaceOrientations</key>
   <array>
-    <string>UIInterfaceOrientationPortrait</string>
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array>
-    <string>UIInterfaceOrientationPortrait</string>
-    <string>UIInterfaceOrientationPortraitUpsideDown</string>
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>

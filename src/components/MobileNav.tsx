@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useStore, type View } from "../lib/store";
 import type { ConnStatus } from "../lib/api";
+import { useUpdates } from "../lib/updates";
 import { Cog, Gauge, List, Wifi } from "./icons";
 
 /** Link state as the toolbar shows it: text and colour. */
@@ -21,6 +22,7 @@ export function MobileNav({ slim = false }: { slim?: boolean }) {
   const status = useStore((s) => s.status);
   const paused = useStore((s) => !!s.live?.paused);
   const go = useStore((s) => s.go);
+  const updateReady = useUpdates((s) => !!s.offer);
   const [text, color] = linkBadge(status, paused);
 
   const tab = (label: string, icon: ReactNode, target: View, match: View["name"][], extra?: ReactNode) => {
@@ -63,7 +65,14 @@ export function MobileNav({ slim = false }: { slim?: boolean }) {
           style={{ background: color }}
         />,
       )}
-      {tab("Settings", <Cog width={size} height={size} />, { name: "settings" }, ["settings"])}
+      {tab(
+        "Settings",
+        <Cog width={size} height={size} />,
+        { name: "settings" },
+        ["settings"],
+        // A new version is out: the Update button is in Settings.
+        updateReady && <span className="absolute -right-1 -top-0.5 h-[8px] w-[8px] rounded-full bg-accent shadow-[0_0_6px_#39ff7a]" />,
+      )}
     </nav>
   );
 }

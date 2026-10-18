@@ -225,11 +225,15 @@ export interface BuildInfo {
 export type UpdateProgress =
   | { event: "started"; total: number | null }
   | { event: "downloading"; done: number; total: number | null }
-  | { event: "installing" };
+  | { event: "installing" }
+  /** Android: allow ApexNorth to install apps (the setting is open), then tap Update again. */
+  | { event: "needsPermission" };
 
 export const api = {
   buildInfo: () => invoke<BuildInfo>("build_info"),
   checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  /** iOS: the real safe areas in CSS px (null elsewhere). */
+  safeArea: () => invoke<Record<"top" | "right" | "bottom" | "left", number> | null>("safe_area"),
   /** Downloads and installs, then the app restarts (the promise only settles on failure). */
   installUpdate: (onProgress: (p: UpdateProgress) => void) => {
     const progress = new Channel<UpdateProgress>();

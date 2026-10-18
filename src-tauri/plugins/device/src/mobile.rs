@@ -5,7 +5,7 @@ use tauri::{
     AppHandle, Runtime,
 };
 
-use crate::{Speak, Status, SystemVoice, Voices};
+use crate::{Download, Insets, Installed, Speak, Status, SystemVoice, Text, Voices};
 
 #[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_apexnorth_device);
@@ -54,5 +54,32 @@ impl<R: Runtime> Device<R> {
     pub fn keep_awake(&self, on: bool) -> crate::Result<()> {
         self.0.run_mobile_plugin::<Value>("keepAwake", serde_json::json!({ "on": on }))?;
         Ok(())
+    }
+
+    /// GET a small text file (Android).
+    pub fn fetch_text(&self, url: &str) -> crate::Result<String> {
+        Ok(self.0.run_mobile_plugin::<Text>("fetchText", serde_json::json!({ "url": url }))?.text)
+    }
+
+    /// Start downloading the update APK (Android); poll [`Self::update_progress`].
+    pub fn download_update(&self, url: &str) -> crate::Result<()> {
+        self.0.run_mobile_plugin::<Value>("downloadUpdate", serde_json::json!({ "url": url }))?;
+        Ok(())
+    }
+
+    pub fn update_progress(&self) -> crate::Result<Download> {
+        Ok(self.0.run_mobile_plugin::<Download>("updateProgress", ())?)
+    }
+
+    /// Open the system installer on the downloaded APK (Android). False when
+    /// Android first needs the user to allow ApexNorth to install apps (the
+    /// setting has been opened for them).
+    pub fn install_update(&self) -> crate::Result<bool> {
+        Ok(!self.0.run_mobile_plugin::<Installed>("installUpdate", ())?.needs_permission)
+    }
+
+    /// The screen's real safe areas (iOS).
+    pub fn safe_area(&self) -> crate::Result<Insets> {
+        Ok(self.0.run_mobile_plugin::<Insets>("safeArea", ())?)
     }
 }

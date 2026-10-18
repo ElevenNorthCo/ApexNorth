@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { ConnStatus, LiveState, PitWindow } from "../lib/api";
 import { DASH, delta, gearLabel, lapClock, speed, tyreColor } from "../lib/format";
 import { useStore } from "../lib/store";
@@ -82,6 +82,48 @@ const PORTRAIT: Layout = {
   slash: "narrow",
 };
 
+/**
+ * The landscape canvas made `w` wide for a phone's longer screen (about
+ * 2.1 : 1 against the desktop's 1.85 : 1), so the tiles fill it instead of
+ * leaving bands at the sides. The extra width goes in thirds: to the left
+ * column, the gear and speed in the middle, and the right column.
+ */
+function widen(L: Layout, w: number): Layout {
+  const a = (w - L.w) / 3;
+  if (a <= 0) return L;
+  const box = (b: Box, dx: number, dw: number): Box => ({ ...b, left: b.left + dx, width: b.width + dw });
+  const at = (p: At, dx: number): At => ({ ...p, left: (p.left as number) + dx });
+  return {
+    ...L,
+    w,
+    position: box(L.position, 0, a / 3),
+    lap: box(L.lap, a / 3, a / 3),
+    lapsLeft: box(L.lapsLeft, (2 * a) / 3, a / 3),
+    tyres: box(L.tyres, 0, a),
+    shift: at(L.shift, 1.5 * a),
+    gear: at(L.gear, 1.5 * a),
+    speed: at(L.speed, 1.5 * a),
+    laps: box(L.laps, 2 * a, a),
+    brake: box(L.brake, 0, a / 2),
+    throttle: box(L.throttle, a / 2, a / 2),
+    fuel: box(L.fuel, a, a),
+    clock: L.clock && box(L.clock, 2 * a, a),
+  };
+}
+
+/** Width ÷ height of an element, kept up to date. */
+function useAspect(ref: React.RefObject<HTMLElement | null>) {
+  const [aspect, setAspect] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setAspect(el.clientHeight ? el.clientWidth / el.clientHeight : 0));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return aspect;
+}
+
 export function Dashboard({ onToggleNav, navOpen }: { onToggleNav: () => void; navOpen: boolean }) {
   const live = useStore((s) => s.live);
   const status = useStore((s) => s.status);
@@ -92,10 +134,13 @@ export function Dashboard({ onToggleNav, navOpen }: { onToggleNav: () => void; n
 
   const fuelCritical = l != null && ((l.fuelPct != null && l.fuelPct < 15) || l.strategy?.window === "box_now");
   const { compact, portrait } = useViewport();
-  const L = compact && portrait ? PORTRAIT : LANDSCAPE;
+  const root = useRef<HTMLDivElement>(null);
+  const aspect = useAspect(root);
+  // Phones on their side: as wide as the screen's shape, up to 2.3 : 1.
+  const L = compact && portrait ? PORTRAIT : compact ? widen(LANDSCAPE, Math.round(Math.min(2.3, aspect) * LANDSCAPE.h)) : LANDSCAPE;
 
   return (
-    <div className="an-bg relative h-full w-full">
+    <div ref={root} className="an-bg relative h-full w-full">
       {fuelCritical && <div className="hit-glow pointer-events-none absolute inset-0 z-40" aria-hidden />}
       <ScaleToFit width={L.w} height={L.h}>
         <HeaderSlash kind={L.slash} width={L.w} />
