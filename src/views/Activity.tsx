@@ -125,6 +125,14 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
           </div>
           {subtitle && <div className="tech mt-1.5 truncate pl-[1px] text-[15px] text-white/60">{subtitle}</div>}
         </div>
+        {/* Phones and narrow windows: the car column is hidden, so the car sits here. */}
+        <div className="flex min-h-0 flex-1 items-center gap-3 py-1 lg:hidden" title={fullCar}>
+          {img && <img src={img} alt={fullCar} className="h-[56px] w-auto max-w-[46%] shrink-0 object-contain max-sm:h-[72px]" draggable={false} />}
+          <div className="min-w-0 leading-tight">
+            <div className="tech truncate text-[11px] text-white/60">{maker}</div>
+            <div className="tech line-clamp-2 text-[13px] font-semibold leading-snug">{model || maker}</div>
+          </div>
+        </div>
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[16px] text-white/90">{shortDate(s.startedAt)}</div>
@@ -160,7 +168,18 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
 
       <div className="my-5 grid w-[310px] shrink-0 grid-cols-[1fr_1.3fr] content-center gap-x-5 gap-y-4 border-l border-white/10 px-6 max-sm:mx-5 max-sm:mb-4 max-sm:mt-0 max-sm:w-auto max-sm:border-l-0 max-sm:border-t max-sm:px-0 max-sm:pt-3">
         <Stat label="Laps">{s.lapCount}</Stat>
-        <Stat label="Best Lap" color="#39ff7a" big>
+        <Stat
+          label="Best Lap"
+          color="#39ff7a"
+          big
+          sub={
+            s.perfectMs != null && s.bestMs != null && s.perfectMs < s.bestMs ? (
+              <span title="Your best sectors from different laps, added up">
+                Perfect <span className="num text-[#c084fc]">{lapTime(s.perfectMs)}</span>
+              </span>
+            ) : undefined
+          }
+        >
           {lapTime(s.bestMs)}
         </Stat>
         <Stat label="Avg Lap">{lapTime(s.avgMs != null ? Math.round(s.avgMs) : null)}</Stat>
@@ -176,13 +195,14 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
   );
 }
 
-function Stat({ label, children, color, big }: { label: string; children: React.ReactNode; color?: string; big?: boolean }) {
+function Stat({ label, children, color, big, sub }: { label: string; children: React.ReactNode; color?: string; big?: boolean; sub?: React.ReactNode }) {
   return (
     <div className="min-w-0">
       <div className="tech text-[12px] text-white/55">{label}</div>
       <div className={`num mt-1 truncate font-bold leading-none ${big ? "text-[24px]" : "text-[21px]"}`} style={{ color }}>
         {children}
       </div>
+      {sub && <div className="tech mt-1 truncate text-[11px] text-white/55">{sub}</div>}
     </div>
   );
 }

@@ -41,7 +41,7 @@ ApexNorth connects to your PlayStation over Wi-Fi and turns Gran Turismo 7's tel
 |---|---|
 | **Drive** | A real-time dashboard with shift lights, live delta to your best lap, tyre temperatures, fuel and pit strategy. |
 | **Record** | Every lap is saved at 30 Hz with five sector splits. Tracks and cars are named automatically. |
-| **Analyse** | Replay any lap on a track map and compare it against your other laps in the same car, with synced speed, throttle, brake and gear traces. |
+| **Analyse** | Replay any lap on a track map and compare it against your other laps in the same car, with synced speed, throttle, brake and gear traces. Pinch to zoom, drag to scrub, and see your perfect lap (best sectors combined) as a target. |
 | **Listen** | A built-in offline voice engineer ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. |
 
 The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster. See the [roadmap](#roadmap-phases--milestones).

@@ -64,7 +64,7 @@ pub struct Call {
     pub urgent: bool,
     pub text: String,
     pub expected_position: Option<i16>,
-    /// Don't cut this off mid-sentence for newer, higher priority news.
+    /// Said first, and never cut off mid-sentence (see `Callout::protected`).
     pub protected: bool,
     pub outlives_session: bool,
 }
@@ -81,7 +81,8 @@ impl Call {
             urgent: priority == Priority::High,
             text: text.into(),
             expected_position: None,
-            protected: false,
+            // Pit, fuel and tyre news is never cut off or dropped.
+            protected: matches!(topic, Topic::Fuel | Topic::PitStrategy | Topic::Tyres),
             outlives_session: false,
         }
     }

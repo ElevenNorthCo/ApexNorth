@@ -4,6 +4,7 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::catalog::{cars, tracks};
@@ -43,6 +44,9 @@ pub struct SessionSummary {
     pub best_ms: Option<i64>,
     /// Mean of the valid, non-pit laps.
     pub avg_ms: Option<f64>,
+    /// The best of each sector across the valid laps, added up: the lap
+    /// you'd do with every sector at its best.
+    pub perfect_ms: Option<i64>,
     /// Track shape as [x, z] points, for thumbnails.
     pub outline: Vec<[f32; 2]>,
     /// Session type the user tagged ("practice", "qualifying", "race",
@@ -110,6 +114,16 @@ fn encode(samples: &[Sample]) -> Result<Vec<u8>> {
 fn decode(blob: &[u8]) -> Result<Vec<Sample>> {
     let raw = zstd::decode_all(blob).map_err(err)?;
     bincode::deserialize(&raw).map_err(err)
+}
+
+/// The sum of the best time in each sector over `laps` (each a list of sector
+/// times). None unless every sector has a time: a lap with fewer sectors
+/// recorded can't stand in for the missing ones.
+pub fn perfect_lap(laps: &[Vec<u32>]) -> Option<i64> {
+    let n = laps.iter().map(Vec::len).max().filter(|&n| n > 0)?;
+    (0..n)
+        .map(|i| laps.iter().filter_map(|l| l.get(i)).filter(|&&ms| ms > 0).min().map(|&ms| ms as i64))
+        .sum()
 }
 
 const LAP_COLS: &str = "l.id, l.session_id, l.lap_no, l.time_ms, l.is_pit, l.is_valid, l.sectors, l.fuel_used, l.max_speed, l.invalid_reason";
@@ -502,6 +516,7 @@ impl Db {
                         .and_then(|o| serde_json::from_str(&o).ok())
                         .unwrap_or_default(),
                     avg_ms: r.get(9)?,
+                    perfect_ms: None,
                     kind: r.get(10)?,
                     conditions: r.get::<_, Option<String>>(12)?.and_then(|c| serde_json::from_str(&c).ok()),
                     venue: layout.map(|l| l.venue.clone()),
@@ -510,7 +525,21 @@ impl Db {
                 })
             })
             .map_err(err)?;
-        rows.collect::<rusqlite::Result<_>>().map_err(err)
+        let mut sessions: Vec<SessionSummary> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
+
+        let mut sectors: HashMap<i64, Vec<Vec<u32>>> = HashMap::new();
+        let mut stmt = self.conn.prepare("SELECT session_id, sectors FROM laps WHERE is_valid = 1").map_err(err)?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
+        for row in rows {
+            let (id, json) = row.map_err(err)?;
+            if let Ok(s) = serde_json::from_str::<Vec<u32>>(&json) {
+                sectors.entry(id).or_default().push(s);
+            }
+        }
+        for s in &mut sessions {
+            s.perfect_ms = sectors.get(&s.id).and_then(|laps| perfect_lap(laps));
+        }
+        Ok(sessions)
     }
 
     pub fn session_laps(&self, session_id: i64) -> Result<Vec<LapSummary>> {
@@ -696,6 +725,15 @@ fn is_placeholder_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn perfect_lap_takes_the_best_of_each_sector() {
+        let laps = vec![vec![13_400, 12_100, 12_600], vec![13_300, 12_300, 12_500], vec![13_500, 12_200]];
+        assert_eq!(perfect_lap(&laps), Some(13_300 + 12_100 + 12_500));
+        // A sector nobody recorded: no perfect lap.
+        assert_eq!(perfect_lap(&[vec![13_000, 0]]), None);
+        assert_eq!(perfect_lap(&[]), None);
+    }
 
     fn lap(time_ms: u32, valid: bool) -> CompletedLap {
         CompletedLap {

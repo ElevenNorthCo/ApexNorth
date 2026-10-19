@@ -56,19 +56,29 @@ pub trait Handler: Send + 'static {
     fn status(&mut self, s: &ConnStatus);
 }
 
+/// Where the link sends heartbeats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    /// Only this address (an IP typed in, or the demo simulator).
+    Fixed(IpAddr),
+    /// Search the LAN, trying the last known address first. A console whose
+    /// address changed since last time is still found.
+    Discover(Option<IpAddr>),
+}
+
 pub struct Link {
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
 }
 
 impl Link {
-    /// Start the link. With `ip = None` the PlayStation is discovered on the LAN.
-    pub fn start<H: Handler>(ip: Option<IpAddr>, handler: H) -> Link {
+    /// Start the link.
+    pub fn start<H: Handler>(target: Target, handler: H) -> Link {
         let stop = Arc::new(AtomicBool::new(false));
         let s = stop.clone();
         let handle = std::thread::Builder::new()
             .name("gt7-link".into())
-            .spawn(move || run(ip, s, handler))
+            .spawn(move || run(target, s, handler))
             .expect("spawn link thread");
         Link { stop, handle: Some(handle) }
     }
@@ -143,7 +153,11 @@ fn reopen(sock: &mut UdpSocket) -> bool {
     }
 }
 
-fn run<H: Handler>(fixed_ip: Option<IpAddr>, stop: Arc<AtomicBool>, mut h: H) {
+fn run<H: Handler>(to: Target, stop: Arc<AtomicBool>, mut h: H) {
+    let fixed_ip = match to {
+        Target::Fixed(ip) => Some(ip),
+        Target::Discover(_) => None,
+    };
     let mut sock = match open() {
         Ok(s) => s,
         Err(e) => {
@@ -159,7 +173,10 @@ fn run<H: Handler>(fixed_ip: Option<IpAddr>, stop: Arc<AtomicBool>, mut h: H) {
     // A reopen that couldn't bind the port yet; tried again each second.
     let mut retry_reopen: Option<Instant> = None;
 
-    let mut target = fixed_ip;
+    let mut target = match to {
+        Target::Fixed(ip) => Some(ip),
+        Target::Discover(hint) => hint,
+    };
     let mut variant = Variant::Tilde;
     let mut variant_since = Instant::now();
     let mut last_hb: Option<Instant> = None;

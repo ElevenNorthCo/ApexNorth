@@ -106,6 +106,8 @@ export interface SessionSummary {
   bestMs: number | null;
   /** Mean of the valid, non-pit laps. */
   avgMs: number | null;
+  /** Best of each sector across the valid laps, added up. */
+  perfectMs: number | null;
   outline: [number, number][];
   /** Type the user tagged, or null (inferred from totalLaps). */
   kind: SessionKind | null;
@@ -248,8 +250,8 @@ export const api = {
   localIps: () => invoke<string[]>("local_ips"),
   listSessions: () => invoke<SessionSummary[]>("list_sessions"),
   sessionLaps: (sessionId: number) => invoke<LapSummary[]>("session_laps", { sessionId }),
-  /** Valid laps with this car on this track, fastest first. */
-  trackLaps: (trackId: number, carCode: number) => invoke<LapSummary[]>("track_laps", { trackId, carCode }),
+  /** Valid laps with this car on this track, fastest first (the fastest 20 unless `limit` says). */
+  trackLaps: (trackId: number, carCode: number, limit?: number) => invoke<LapSummary[]>("track_laps", { trackId, carCode, limit }),
   getLap: (lapId: number) => invoke<LapDetail>("get_lap", { lapId }),
   deleteSession: (sessionId: number) => invoke<void>("delete_session", { sessionId }),
   setSessionKind: (sessionId: number, kind: SessionKind | null) => invoke<void>("set_session_kind", { sessionId, kind }),

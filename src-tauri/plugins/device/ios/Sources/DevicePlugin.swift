@@ -147,12 +147,29 @@ class DevicePlugin: Plugin, AVSpeechSynthesizerDelegate {
       .sorted { ($0.language, -$0.quality.rawValue, $0.name) < ($1.language, -$1.quality.rawValue, $1.name) }
   }
 
-  /// The requested voice, else the best installed voice for the language.
+  /// The default ("Automatic") voice on iPhone: Karen, Australian English.
+  private static let defaultName = "Karen"
+  private static let defaultLang = "en-AU"
+
+  /// The best installed quality of a voice: Premium, then Enhanced, then
+  /// the compact one that ships with iOS.
+  private func best(named name: String, lang: String) -> AVSpeechSynthesisVoice? {
+    englishVoices().filter { $0.name == name && $0.language == lang }.max { $0.quality.rawValue < $1.quality.rawValue }
+  }
+
+  /// The requested voice (upgraded to a richer download of the same voice
+  /// when there is one); with none requested, Karen (en-AU); else the best
+  /// installed voice for the language.
   private func pickVoice(id: String?, lang: String) -> AVSpeechSynthesisVoice? {
     let key = "\(id ?? "")|\(lang)"
     if let c = chosen, c.key == key { return c.voice }
     var pick: AVSpeechSynthesisVoice? = nil
-    if let id = id, !id.isEmpty { pick = AVSpeechSynthesisVoice(identifier: id) }
+    if let id = id, !id.isEmpty, let v = AVSpeechSynthesisVoice(identifier: id) {
+      pick = best(named: v.name, lang: v.language) ?? v
+    }
+    if pick == nil, id == nil || id!.isEmpty {
+      pick = best(named: DevicePlugin.defaultName, lang: DevicePlugin.defaultLang)
+    }
     if pick == nil {
       pick = englishVoices().filter { $0.language == lang }.max { $0.quality.rawValue < $1.quality.rawValue }
     }

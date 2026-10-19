@@ -25,7 +25,7 @@ use settings::Settings;
 use storage::{Db, LapDetail, LapSummary, SessionSummary};
 use telemetry::packet::Packet;
 use telemetry::sim::Simulator;
-use telemetry::udp::{ConnState, ConnStatus, Handler, Link};
+use telemetry::udp::{ConnState, ConnStatus, Handler, Link, Target};
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 
@@ -273,7 +273,7 @@ impl Handler for LiveHandler {
     }
 }
 
-fn start_link(app: &AppHandle, state: &AppState, ip: Option<IpAddr>) {
+fn start_link(app: &AppHandle, state: &AppState, target: Target) {
     // Stop the old link first so it releases the UDP port.
     drop(state.link.lock().take());
     state.voice.clear();
@@ -290,7 +290,7 @@ fn start_link(app: &AppHandle, state: &AppState, ip: Option<IpAddr>) {
         last_emit: Instant::now(),
         awake: platform::ScreenAwake::new(app),
     };
-    *state.link.lock() = Some(Link::start(ip, handler));
+    *state.link.lock() = Some(Link::start(target, handler));
 }
 
 fn parse_ip(ip: &str) -> Result<IpAddr, String> {
@@ -301,7 +301,11 @@ fn parse_ip(ip: &str) -> Result<IpAddr, String> {
 fn connect(app: AppHandle, state: State<AppState>, ip: Option<String>) -> Result<(), String> {
     let ip = ip.filter(|s| !s.trim().is_empty()).map(|s| parse_ip(&s)).transpose()?;
     drop(state.sim.lock().take());
-    start_link(&app, &state, ip);
+    let target = match ip {
+        Some(ip) => Target::Fixed(ip),
+        None => Target::Discover(None),
+    };
+    start_link(&app, &state, target);
     Ok(())
 }
 
@@ -313,7 +317,7 @@ fn start_demo(app: AppHandle, state: State<AppState>) -> Result<(), String> {
         *sim = Some(Simulator::start().map_err(|e| format!("Could not start demo: {e}"))?);
     }
     drop(sim);
-    start_link(&app, &state, Some(IpAddr::from([127, 0, 0, 1])));
+    start_link(&app, &state, Target::Fixed(IpAddr::from([127, 0, 0, 1])));
     Ok(())
 }
 
@@ -357,8 +361,8 @@ fn session_laps(state: State<AppState>, session_id: i64) -> Result<Vec<LapSummar
 }
 
 #[tauri::command]
-fn track_laps(state: State<AppState>, track_id: i64, car_code: i32) -> Result<Vec<LapSummary>, String> {
-    state.db.lock().track_laps(track_id, car_code, 20)
+fn track_laps(state: State<AppState>, track_id: i64, car_code: i32, limit: Option<i64>) -> Result<Vec<LapSummary>, String> {
+    state.db.lock().track_laps(track_id, car_code, limit.unwrap_or(20).clamp(1, 5000))
 }
 
 #[tauri::command]
@@ -418,14 +422,20 @@ fn list_voices(state: State<AppState>) -> Vec<voices::VoiceOption> {
     voices::options(&dirs, state.builtin_tts.as_deref())
 }
 
-/// On phones: the system's offline English voices, after "Automatic" (the
-/// best installed British voice).
+/// On phones: the system's offline English voices, after "Automatic" (on
+/// iPhone, Karen (en-AU) at her best installed quality; on Android the best
+/// installed British voice).
+#[cfg(target_os = "ios")]
+const AUTOMATIC_VOICE: &str = "Karen (en-AU) · default";
+#[cfg(all(mobile, not(target_os = "ios")))]
+const AUTOMATIC_VOICE: &str = "Automatic";
+
 #[cfg(mobile)]
 #[tauri::command]
 async fn list_voices(app: AppHandle) -> Vec<voices::VoiceOption> {
     use tauri_plugin_apexnorth_device::DeviceExt;
     let found = tauri::async_runtime::spawn_blocking(move || app.device().voices()).await;
-    let mut out = vec![voices::VoiceOption { value: engineer::voice_native::SYSTEM_PREFIX.into(), label: "Automatic".into(), group: "system" }];
+    let mut out = vec![voices::VoiceOption { value: engineer::voice_native::SYSTEM_PREFIX.into(), label: AUTOMATIC_VOICE.into(), group: "system" }];
     match found {
         Ok(Ok(list)) => out.extend(list.into_iter().map(|v| voices::VoiceOption {
             value: format!("{}{}", engineer::voice_native::SYSTEM_PREFIX, v.id),
@@ -614,15 +624,17 @@ pub fn run() {
                 match Simulator::start() {
                     Ok(sim) => {
                         *state.sim.lock() = Some(sim);
-                        start_link(app.handle(), &state, Some(IpAddr::from([127, 0, 0, 1])));
+                        start_link(app.handle(), &state, Target::Fixed(IpAddr::from([127, 0, 0, 1])));
                         smoke(|| format!("demo started on {} (data in {})", platform::OS, data.display()));
                     }
                     Err(e) => smoke(|| format!("demo failed: {e}")),
                 }
             } else if let Some(ip) = auto_ip.and_then(|ip| parse_ip(&ip).ok()) {
+                // Search, starting with the last console: its address can
+                // change, and locking onto the old one never connected.
                 let handle = app.handle().clone();
                 let state = app.state::<AppState>();
-                start_link(&handle, &state, Some(ip));
+                start_link(&handle, &state, Target::Discover(Some(ip)));
             }
             Ok(())
         })

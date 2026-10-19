@@ -11,7 +11,7 @@ const INVALID_WHY: Record<InvalidReason, string> = {
 import { carName, lapTime, shortDate, split, timeOfDay } from "../lib/format";
 import { useStore } from "../lib/store";
 import { Btn } from "./Connect";
-import { Back, Check, Pencil, Trash } from "../components/icons";
+import { Back, Check, Pencil, Play, Trash } from "../components/icons";
 import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
 import { Flag } from "../components/Flag";
@@ -127,6 +127,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
 
         {session && <KindPicker session={session} onChange={load} />}
         {session && <ConditionsPicker session={session} laps={laps} onChange={load} />}
+        {session && <PerfectLap session={session} laps={laps} best={best} />}
         {session && <TrackComparison session={session} all={all} />}
 
         <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Laps</h2>
@@ -315,20 +316,33 @@ function ConditionsPicker({ session, laps, onChange }: { session: SessionSummary
   );
 }
 
-/** Your pace at this track split by session type: clean time-trial pace vs race pace with traffic and wear. */
+/**
+ * Your pace at this track in this car, split by session type: clean
+ * time-trial pace vs race pace with traffic and wear. Each card opens the
+ * replay of its best lap. GT7 doesn't send PP, so the car is the match.
+ */
 function TrackComparison({ session, all }: { session: SessionSummary; all: SessionSummary[] }) {
+  const go = useStore((s) => s.go);
+  const [trackLaps, setTrackLaps] = useState<LapSummary[]>([]);
+  useEffect(() => {
+    if (session.trackId == null) return;
+    api.trackLaps(session.trackId, session.carCode, 5000).then(setTrackLaps).catch(() => setTrackLaps([]));
+  }, [session.trackId, session.carCode, all]);
   if (session.trackId == null) return null;
-  const atTrack = all.filter((s) => s.trackId === session.trackId);
+  const atTrack = all.filter((s) => s.trackId === session.trackId && s.carCode === session.carCode);
   const here = atTrack.filter((s) => conditionsMatch(s.conditions, session.conditions));
   const skipped = atTrack.length - here.length;
   const rows = KINDS.map((k) => {
     const ss = here.filter((s) => sessionKind(s) === k.value);
-    const bests = ss.map((s) => s.bestMs).filter((v): v is number => v != null);
+    const ids = new Set(ss.map((s) => s.id));
+    // trackLaps comes fastest first.
+    const bestLap = trackLaps.find((l) => ids.has(l.sessionId)) ?? null;
     const avgs = ss.map((s) => s.avgMs).filter((v): v is number => v != null);
     return {
       ...k,
       sessions: ss.length,
-      best: bests.length ? Math.min(...bests) : null,
+      bestLap,
+      best: bestLap?.timeMs ?? null,
       avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null,
     };
   });
@@ -337,8 +351,11 @@ function TrackComparison({ session, all }: { session: SessionSummary; all: Sessi
   if (rows.filter((r) => r.sessions > 0).length < 1) return null;
   return (
     <>
-      <h2 className="tech mb-2 mt-8 flex items-baseline gap-3 text-[13px] text-white/50">
+      <h2 className="tech mb-2 mt-8 flex flex-wrap items-baseline gap-x-3 text-[13px] text-white/50">
         Your pace here by session type
+        <span className="normal-case text-[12px] text-white/40">
+          {carName(session.carCode, session.carName)} only · tap a time to replay that lap
+        </span>
         {skipped > 0 && (
           <span className="normal-case text-[12px] text-white/40">
             {skipped} {skipped === 1 ? "session" : "sessions"} with different conditions left out
@@ -346,23 +363,102 @@ function TrackComparison({ session, all }: { session: SessionSummary; all: Sessi
         )}
       </h2>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {rows.map((r) => (
-          <div
-            key={r.value}
-            className={`rounded-[12px] border bg-black/40 p-4 ${r.sessions ? "" : "opacity-40"}`}
-            style={{ borderColor: `color-mix(in srgb, ${r.color} ${r.sessions ? 70 : 25}%, transparent)` }}
-          >
-            <div className="tech flex items-center justify-between text-[13px]" style={{ color: r.color }}>
-              {r.label}
-              <span className="text-[11px] text-white/40">{r.sessions ? `${r.sessions}×` : "none yet"}</span>
-            </div>
-            <div className="num mt-2 text-[24px] font-bold leading-none">{lapTime(r.best)}</div>
-            <div className="mt-2 flex justify-between text-[12px] text-white/50">
-              <span>avg {lapTime(r.avg != null ? Math.round(r.avg) : null)}</span>
-              {r.best != null && ref != null && r.best !== ref && <span className="num text-[#ff9f1a]">+{((r.best - ref) / 1000).toFixed(3)}</span>}
+        {rows.map((r) => {
+          const lap = r.bestLap;
+          return (
+            <button
+              key={r.value}
+              disabled={!lap}
+              onClick={() => lap && go({ name: "lap", lapId: lap.id, sessionId: lap.sessionId })}
+              title={lap ? `Replay the ${r.label.toLowerCase()} best lap` : undefined}
+              className={`group rounded-[12px] border bg-black/40 p-4 text-left transition enabled:hover:bg-white/[0.04] enabled:active:scale-[0.98] ${r.sessions ? "" : "opacity-40"}`}
+              style={{ borderColor: `color-mix(in srgb, ${r.color} ${r.sessions ? 70 : 25}%, transparent)` }}
+            >
+              <div className="tech flex items-center justify-between text-[13px]" style={{ color: r.color }}>
+                {r.label}
+                <span className="text-[11px] text-white/40">{r.sessions ? `${r.sessions}×` : "none yet"}</span>
+              </div>
+              <div className="num mt-2 text-[24px] font-bold leading-none">{lapTime(r.best)}</div>
+              <div className="mt-2 flex justify-between text-[12px] text-white/50">
+                <span>avg {lapTime(r.avg != null ? Math.round(r.avg) : null)}</span>
+                {r.best != null && ref != null && r.best !== ref && <span className="num text-[#ff9f1a]">+{((r.best - ref) / 1000).toFixed(3)}</span>}
+              </div>
+              {lap && (
+                <div className="tech mt-2 flex items-center gap-1 text-[11px] text-white/45 transition group-hover:text-white/80">
+                  <Play width={10} height={10} /> Replay lap {lap.lapNo}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** Best sector times over `laps`, each with the lap it came from, or null if a sector has none. */
+function bestSectors(laps: LapSummary[]): { ms: number; lap: LapSummary }[] | null {
+  const valid = laps.filter((l) => l.isValid);
+  const n = Math.max(0, ...valid.map((l) => l.sectorsMs.length));
+  if (!n) return null;
+  const out: { ms: number; lap: LapSummary }[] = [];
+  for (let i = 0; i < n; i++) {
+    let pick: { ms: number; lap: LapSummary } | null = null;
+    for (const l of valid) {
+      const ms = l.sectorsMs[i];
+      if (ms != null && ms > 0 && (!pick || ms < pick.ms)) pick = { ms, lap: l };
+    }
+    if (!pick) return null;
+    out.push(pick);
+  }
+  return out;
+}
+
+/**
+ * The perfect lap: every sector at its best, from whichever lap set it. One
+ * for this session and one for all your laps in this car at this track,
+ * as a target time.
+ */
+function PerfectLap({ session, laps, best }: { session: SessionSummary; laps: LapSummary[]; best: LapSummary | null }) {
+  const [trackLaps, setTrackLaps] = useState<LapSummary[]>([]);
+  useEffect(() => {
+    if (session.trackId == null) return;
+    api.trackLaps(session.trackId, session.carCode, 5000).then(setTrackLaps).catch(() => setTrackLaps([]));
+  }, [session.trackId, session.carCode, laps]);
+  const here = useMemo(() => bestSectors(laps), [laps]);
+  const ever = useMemo(() => bestSectors(trackLaps.length ? trackLaps : laps), [trackLaps, laps]);
+  if (!here) return null;
+  const total = (s: { ms: number }[]) => s.reduce((a, b) => a + b.ms, 0);
+  const perfect = total(here);
+  const everMs = ever ? total(ever) : null;
+  const gain = best ? best.timeMs - perfect : null;
+  return (
+    <>
+      <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Perfect lap</h2>
+      <div className="flex flex-wrap gap-3">
+        <div className="min-w-[240px] flex-1 rounded-[12px] border border-[#c084fc]/60 bg-black/40 p-4 shadow-[0_0_14px_rgba(192,132,252,0.15)]">
+          <div className="tech flex items-center justify-between text-[13px] text-[#c084fc]">
+            This session
+            {gain != null && gain > 0 && <span className="num text-[12px] text-white/50">{(gain / 1000).toFixed(3)} s in hand</span>}
+          </div>
+          <div className="num mt-2 text-[26px] font-bold leading-none">{lapTime(perfect)}</div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {here.map((s, i) => (
+              <span key={i} className="num rounded-[6px] border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] text-white/70">
+                <span className="tech text-white/45">S{i + 1}</span> {split(s.ms)} <span className="text-white/40">L{s.lap.lapNo}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        {everMs != null && trackLaps.length > 0 && (
+          <div className="min-w-[200px] rounded-[12px] border border-white/15 bg-black/40 p-4 max-sm:flex-1">
+            <div className="tech text-[13px] text-white/60">All-time, this car</div>
+            <div className="num mt-2 text-[26px] font-bold leading-none">{lapTime(everMs)}</div>
+            <div className="mt-3 text-[12px] text-white/45">
+              Your target here: {everMs < perfect ? `${((perfect - everMs) / 1000).toFixed(3)} s under this session's` : "this session holds every best sector"}
             </div>
           </div>
-        ))}
+        )}
       </div>
     </>
   );
