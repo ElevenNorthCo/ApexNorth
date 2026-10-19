@@ -4,7 +4,7 @@ ApexNorth on a phone is the same app as on desktop. The phone connects to the Pl
 
 There is one codebase: the React UI, the Rust telemetry engine, the race engineer, strategy and storage are shared by all five platforms. A fix to fuel strategy or a new callout reaches Windows, macOS, Linux, Android and iOS from the same commit.
 
-> **Status (0.4.0):** Android ships in every release (`ApexNorth-Android.apk`) and updates itself from the app. iPhone is built from a Mac for your own phone (`apexnorth-ios`, below) until there's an Apple Developer account for TestFlight. Neither has been tested against a live PS5 yet. See [What's been tested](#whats-been-tested).
+> **Status (0.5.0):** Android ships in every release (`ApexNorth-Android.apk`) and updates itself from the app. iPhone is built from a Mac for your own phone (`apexnorth-ios`, below) until there's an Apple Developer account for TestFlight. The iPhone has raced against a live PS5 (2026-10-18), and 0.5.0 carries the fixes from that playtest; Android hasn't raced live yet. See [What's been tested](#whats-been-tested).
 
 ---
 
@@ -20,7 +20,9 @@ Almost nothing. The shared code is everything under `src/` (UI) and `src-tauri/s
 | Navigation | Top toolbar | Bottom tab bar (any screen under 900 × 520) | `components/MobileNav.tsx` |
 | Dashboard | 1000 × 540 canvas | Same canvas in landscape; a 540 × 1140 portrait canvas with the same tiles | `views/Dashboard.tsx` (`LANDSCAPE` / `PORTRAIT`) |
 
-**What the engineer says is identical.** Only the last step, turning text into sound, differs. The queue, priorities, interruptions, chatter levels, cooldowns and every rule live in shared Rust (`engineer/voice.rs` talks to a `Backend` trait). The phone backend has its own unit tests with a fake speech engine (`voice_native.rs`).
+**What the engineer says is identical.** Only the last step, turning text into sound, differs. The queue, priorities, chatter levels, cooldowns and every rule live in shared Rust (`engineer/voice.rs` talks to a `Backend` trait). The phone backend has its own unit tests with a fake speech engine (`voice_native.rs`).
+
+A call that has started always finishes on every platform: pit, fuel and tyre calls go first and are never cut off, and only a position call that is already out of date stops mid-sentence (0.5.0).
 
 ### Why not Kokoro on phones (yet)
 
@@ -38,14 +40,16 @@ Either way, the `Backend` trait is the seam: a `KokoroBackend` for phones slots 
 
 The system voices are offline, free, need no account or API key, and cost nothing to run. On Android, the voice list in Settings shows only voices that are installed and need no network. Better voices come from the phone's settings: Android → Text-to-speech output → install voice data; iPhone → Accessibility → Spoken Content → Voices, where "Enhanced"/"Premium" voices sound much better.
 
+On iPhone, **Automatic** is Karen (Australian English), the user's pick after testing every installed voice (0.5.0). If Karen's Enhanced or Premium voice is downloaded, ApexNorth uses it; the same goes for any voice picked in Settings. Without Karen, Automatic falls back to the best British voice. Android's Automatic is still the best British voice.
+
 ---
 
 ## Connecting to the PlayStation from a phone
 
 The phone uses the same Rust UDP link as desktop (`telemetry/udp.rs`): heartbeats to the console's port 33739, telemetry back on the phone's port 33740.
 
-- **Manual IP** is the reliable path: Connect → Enter IP manually. The console's IP is under PS5 Settings → Network → Connection Status. ApexNorth remembers it and reconnects on launch.
-- **Find my PlayStation** heartbeats every address on the phone's /24 by unicast (and tries a broadcast). Broadcast fails silently on iOS without Apple's multicast entitlement, but the unicast sweep needs no entitlement, so discovery should still work there. (Not yet verified on hardware.)
+- **Manual IP** is the reliable path: Connect → Enter IP manually. The console's IP is under PS5 Settings → Network → Connection Status. ApexNorth remembers the console and reconnects on launch: it heartbeats the saved address and sweeps the LAN at the same time, so a console whose address changed is still found (before 0.5.0 it only tried the saved address and could sit on "Connecting").
+- **Find my PlayStation** heartbeats every address on the phone's /24 by unicast (and tries a broadcast). Broadcast fails silently on iOS without Apple's multicast entitlement, but the unicast sweep needs no entitlement, so discovery works there (verified on the user's iPhone, 2026-10-18).
 - **iOS** asks for **Local Network** access the first time the app reaches the LAN. The prompt text is in `src-tauri/Info.ios.plist` (`NSLocalNetworkUsageDescription`). If it was declined, turn it on under Settings → Apps → ApexNorth → Local Network. The Connect screen says so when the search is slow.
 - **Android** needs only the `INTERNET` permission. `targetSdk` is 36 on purpose: apps targeting Android 17 (SDK 37) are subject to local network protection, and would need a runtime permission before they can reach the console. Before raising `targetSdk`, add that permission request (ideally to `plugins/device`).
 - **Signal loss / Wi-Fi changes:** heartbeats continue while the link is up, so GT7 resumes streaming when the network comes back. If the OS breaks the socket (iOS can reclaim it while the app is in the background), the link closes and reopens it after 2 s of errors (`REOPEN_AFTER`).
@@ -181,10 +185,22 @@ Apple requires every app on a real device to be signed.
 | Demo race: live, lap recorded, engineer | ✓ | ✓ CI emulator (API 34, Pixel 6) | ✓ CI simulator (iPhone, iOS 18) |
 | Portrait / landscape dashboard | — | ✓ emulator screenshots | ✓ simulator screenshot (portrait) |
 | UI at phone sizes, every view | — | ✓ headless Chrome screenshots | ✓ headless Chrome screenshots |
-| Live PS5 telemetry | ✓ (user's PS5) | **not yet** | **not yet** |
-| System voice audible | — | **not yet** (CI checks the engineer's calls, not the sound) | **not yet** |
+| Live PS5 telemetry | ✓ (user's PS5) | **not yet** | ✓ races at Barcelona, recorded and replayed (2026-10-18) |
+| System voice audible | — | ✓ real phone (2026-10-17) | ✓ engineer live on track (2026-10-18) |
 | Physical device | ✓ | ✓ installs, voice works (2026-10-17) | ✓ iPhone 11 Pro Max, free Apple ID, installed over Wi-Fi (2026-10-17) |
 
 In CI on 2026-10-15 (run 4 of the Mobile workflow), the emulator and the simulator each raced the demo and produced the same engineer calls, in order: "You start P5 of 16…", "Lights out. Go, go, go!", "Great start! Up one place to P4.", lap 1 recorded in 63.3 s, then fuel and pit-window calls on iOS. That's the shared Rust engine and engineer running unchanged on both phones.
 
-**Still to test on hardware:** a live PS5 session from a real phone, both by manual IP and with **Find my PlayStation**; the iOS Local Network prompt; voice output and ducking of music; screen kept on; and returning from the background mid-session.
+**Still to test on hardware:** a live PS5 session from a real Android phone; ducking of music; and returning from the background mid-session.
+
+### Playtest on iPhone (2026-10-18/19), fixed in 0.5.0
+The user raced on the iPhone and noted what to fix in Apple Notes (with marked-up screenshots). All of it shipped in 0.5.0 and was signed off on the phone:
+- Car renders missing on phone Activity cards (the car column is hidden under 1024 px): now shown under the track name.
+- The dashboard menu was hard to find: a tap anywhere shows it, and it hides after 4 s.
+- Lap replay stuttered on every platform: rebuilt (shared playhead, interpolated car, cached map paths), with pinch-zoom and drag on the map and charts.
+- Charts couldn't be dragged with a finger: horizontal drag scrubs, vertical swipes scroll.
+- Pace-by-type cards open the replay of their best lap and only count the same car.
+- A perfect lap (best sectors combined) on Activity and the Session view.
+- Pit info cut off by a corner callout: nothing is interrupted any more.
+- Auto-connect sometimes stuck until Cancel → Find my PlayStation: it now searches as well.
+- Karen (en-AU) is the default iPhone voice.

@@ -41,8 +41,8 @@ ApexNorth connects to your PlayStation over Wi-Fi and turns Gran Turismo 7's tel
 |---|---|
 | **Drive** | A real-time dashboard with shift lights, live delta to your best lap, tyre temperatures, fuel and pit strategy. |
 | **Record** | Every lap is saved at 30 Hz with five sector splits. Tracks and cars are named automatically. |
-| **Analyse** | Replay any lap on a track map and compare it against your other laps in the same car, with synced speed, throttle, brake and gear traces. Pinch to zoom, drag to scrub, and see your perfect lap (best sectors combined) as a target. |
-| **Listen** | A built-in offline voice engineer ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. |
+| **Analyse** | Smoothly replay any lap on a track map and compare it against your other laps in the same car, with synced speed, throttle, brake and gear traces. Pinch to zoom, drag to scrub, and see your perfect lap (best sectors combined) as a target. |
+| **Listen** | A built-in offline voice engineer ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voices, nothing to install) calls lap times, sectors, fuel, the pit window, tyres and race position. Pit and fuel news always finishes, never cut off mid-sentence. |
 
 The long-term goal is a race engineer you can talk to: an AI that reads your telemetry, tells you where you're losing time, and coaches you to get faster. See the [roadmap](#roadmap-phases--milestones).
 
@@ -485,10 +485,26 @@ The same app on phones, connecting straight to the PlayStation: no computer need
 - [x] iPhone test builds over Wi-Fi from a Mac (`scripts/mobile/ios-install.sh`)
 - [x] **Milestone:** 0.4.0, the first release with Android
 - [x] Real Android phone: installs, voice works
-- [ ] Live PS5 test from a real Android phone and iPhone
+- [x] Live PS5 test from a real iPhone: races recorded, replayed and called by the engineer (2026-10-18)
+- [ ] Live PS5 test from a real Android phone
 - [ ] Kokoro voices on phones (non-GPL phonemizer)
 - [ ] Android 17 local network permission (then raise `targetSdk`)
 - [ ] iPhone for testers: TestFlight (needs the Apple Developer Program, planned with the LLC)
+
+### ✅ Phase 4.6: Playtest polish (0.5.0)
+From a live playtest on iPhone; every fix applies to all platforms.
+- [x] Lap replay rebuilt for smoothness: the car glides between samples and only the moving parts redraw (steady 60 fps on a throttled CPU, where it used to stall and jump)
+- [x] Pinch to zoom, drag to look around and double-tap to fit on the track map; drag to scrub and pinch to zoom the charts (touch and trackpad)
+- [x] Perfect lap: your best sectors from different laps added up, on Activity cards and the Session page, plus the all-time perfect lap in that car at that track
+- [x] Pace-by-type cards open the replay of their best lap, and only count laps in the same car
+- [x] The engineer never cuts itself off: pit, fuel and tyre calls go first and always finish; only an out-of-date position call stops mid-sentence
+- [x] Auto-connect searches the network as well as the last address, so it no longer sits on "Connecting"
+- [x] Phones: car renders on Activity cards, and a tap anywhere on the dashboard shows the menu (it hides again after a few seconds)
+- [x] iPhone: Karen (Australian English) is the default voice, using her Enhanced or Premium download when installed
+- [x] **Milestone:** 0.5.0 ✔
+
+### 🔜 Next
+- [ ] Refresh the car and track catalogs for the latest GT7 update (new cars and a new track): `scripts/build_gt7_data.py`, then add the new car renders and a track photo
 
 ### 🔮 Phase 5: AI coach
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application
