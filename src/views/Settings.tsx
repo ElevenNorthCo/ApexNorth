@@ -110,7 +110,9 @@ export function SettingsView() {
     ? v.modelPath || `Put voices in ${voicesDir}`
     : current.group === "system"
       ? v.modelPath === "system:"
-        ? "The phone's best English voice. Add more in the phone's text-to-speech settings."
+        ? build?.os === "ios"
+          ? "Karen, Australian English. For a richer Karen, download her Enhanced or Premium voice in iPhone Settings → Accessibility → Spoken Content → Voices; ApexNorth uses it automatically."
+          : "The phone's best English voice. Add more in the phone's text-to-speech settings."
         : "The phone's own voice, offline"
       : current.group === "piper"
       ? "Piper voice"

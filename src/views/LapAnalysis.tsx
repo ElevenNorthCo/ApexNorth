@@ -5,20 +5,11 @@ import { useStore } from "../lib/store";
 import { TrackMap } from "../components/TrackMap";
 import { TelemetryChart, type ChartSeries } from "../components/TelemetryChart";
 import { Back, Pause, Play } from "../components/icons";
+import { Playhead, lerpAt, posAt, seek, usePlayhead } from "../lib/playhead";
 
 const SECTORS = 5;
-
-/** Index of the first sample at or beyond `v` for a monotonically increasing key. */
-function seek(samples: Sample[], key: "d" | "t", v: number): number {
-  let lo = 0;
-  let hi = samples.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (samples[mid][key] < v) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
+/** Closest a pinch can zoom the charts, in metres of track. */
+const MIN_SPAN_M = 60;
 
 interface Aligned {
   spd: (number | null)[];
@@ -115,15 +106,18 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   const [options, setOptions] = useState<LapSummary[]>([]);
   const [cmpId, setCmpId] = useState<number | null>(null);
   const [cmp, setCmp] = useState<LapDetail | null>(null);
-  const [cursor, setCursor] = useState(0);
+  // The replay position lives outside React state so playback doesn't re-render the view.
+  const playhead = useMemo(() => new Playhead(), [lapId]);
   const [sector, setSector] = useState<number | null>(null);
-  const [zoom, setZoom] = useState(1);
+  /** Distance range pinched on the charts, over the sector's. */
+  const [chartRange, setChartRange] = useState<[number, number] | null>(null);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
 
   useEffect(() => {
     setLap(null);
-    setCursor(0);
+    setPlaying(false);
+    setChartRange(null);
     api
       .getLap(lapId)
       .then(async (l) => {
@@ -154,39 +148,49 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
     () => Array.from({ length: SECTORS + 1 }, (_, k) => (samples.length ? seek(samples, "d", (len * k) / SECTORS) : 0)),
     [samples, len],
   );
-  const xRange: [number, number] = sector == null ? [0, len] : [(len * sector) / SECTORS, (len * (sector + 1)) / SECTORS];
+  const sectorRange: [number, number] = sector == null ? [0, len] : [(len * sector) / SECTORS, (len * (sector + 1)) / SECTORS];
+  const xRange = chartRange ?? sectorRange;
+  const pinchCharts = (r: [number, number]) => {
+    let span = Math.max(MIN_SPAN_M, Math.min(len, r[1] - r[0]));
+    let lo = Math.max(0, Math.min(len - span, r[0]));
+    if (span >= len) [lo, span] = [0, len];
+    setChartRange(span >= len && sector == null ? null : [lo, lo + span]);
+  };
   const mapRange = useMemo<[number, number] | null>(
     () => (sector == null ? null : [sectorIdx[sector], sectorIdx[sector + 1]]),
     [sector, sectorIdx],
   );
   const sectorMarks = useMemo(() => sectorIdx.slice(0, SECTORS), [sectorIdx]);
 
-  // Playback in real time along the lap.
+  // Playback in real time along the lap, between samples, so the car glides.
   const raf = useRef(0);
-  const cursorRef = useRef(cursor);
-  cursorRef.current = cursor;
   useEffect(() => {
-    if (!playing || !samples.length) return;
-    const startIdx = cursorRef.current >= samples.length - 1 ? 0 : cursorRef.current;
-    const t0 = samples[startIdx].t;
+    if (!playing || samples.length < 2) return;
+    const end = samples[samples.length - 1].t;
+    const from = lerpAt(samples, playhead.pos, (s) => s.t);
+    const t0 = from >= end ? samples[0].t : from;
     const wall0 = performance.now();
     const frame = (now: number) => {
-      const idx = seek(samples, "t", t0 + (now - wall0) * rate);
-      setCursor(idx);
-      if (idx >= samples.length - 1) setPlaying(false);
+      const t = t0 + (now - wall0) * rate;
+      playhead.set(posAt(samples, "t", Math.min(t, end)));
+      if (t >= end) setPlaying(false);
       else raf.current = requestAnimationFrame(frame);
     };
     raf.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf.current);
-  }, [playing, rate, samples]);
+  }, [playing, rate, samples, playhead]);
 
-  const onChartCursor = (d: number) => {
-    if (!playing && samples.length) setCursor(Math.min(samples.length - 1, seek(samples, "d", d)));
+  const toDistance = (d: number) => {
+    if (samples.length) playhead.set(posAt(samples, "d", Math.max(0, Math.min(len, d))));
+  };
+  // Hovering follows the mouse while paused.
+  const onChartHover = (d: number) => {
+    if (!playing) toDistance(d);
   };
   // Grabbing a chart takes over from playback: pause, then drag to scrub.
-  const onScrubStart = (d: number) => {
-    setPlaying(false);
-    if (samples.length) setCursor(Math.min(samples.length - 1, seek(samples, "d", d)));
+  const onScrub = (d: number, start: boolean) => {
+    if (start) setPlaying(false);
+    toDistance(d);
   };
 
   const k = imperial ? 0.621371 : 1;
@@ -246,7 +250,6 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   if (error) return <div className="p-8 text-red-300">{error}</div>;
   if (!lap) return <div className="flex h-full items-center justify-center text-muted">Loading lap…</div>;
 
-  const cur = samples[Math.min(cursor, samples.length - 1)];
   const sectorDelta = (i: number) => (cmp && lap.sectorsMs[i] != null && cmp.sectorsMs[i] != null ? lap.sectorsMs[i] - cmp.sectorsMs[i] : null);
 
   return (
@@ -255,11 +258,9 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         <TrackMap
           samples={samples}
           compare={cmp?.samples}
-          ghost={aligned?.ghost[cursor] ?? null}
-          cursor={cursor}
+          ghost={aligned?.ghost ?? null}
+          playhead={playhead}
           range={mapRange}
-          zoom={zoom}
-          onZoom={setZoom}
           sectorMarks={sectorMarks}
         />
         <button
@@ -298,10 +299,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
               Lap {lap.lapNo} · {lapTime(lap.timeMs)}
             </h1>
           </div>
-          <div className="num text-right text-[13px] text-white/60">
-            <div>{Math.round(cur.spd * k)} {imperial ? "mph" : "km/h"} · G{cur.gear} · {cur.thr}% / {cur.brk}%</div>
-            <div>t {split(cur.t)}s</div>
-          </div>
+          <Readout samples={samples} playhead={playhead} k={k} imperial={imperial} />
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
@@ -370,7 +368,7 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
               key={String(s)}
               onClick={() => {
                 setSector(s);
-                setZoom(1);
+                setChartRange(null);
               }}
               className={`rounded-xl px-4 py-2 text-[15px] font-medium ${sector === s ? "bg-accent text-black" : "text-white/75 hover:text-white"}`}
             >
@@ -378,6 +376,11 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
             </button>
           ))}
         </div>
+        {chartRange && (
+          <button onClick={() => setChartRange(null)} className="tech ml-3 rounded-xl border border-white/15 px-3 py-2 text-[12px] text-white/70 hover:text-white">
+            Reset zoom
+          </button>
+        )}
 
         <div className="mt-4 space-y-2">
           {charts.map((c) => (
@@ -389,15 +392,33 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
                 height={c.height}
                 yRange={c.yRange}
                 xRange={xRange}
-                cursorD={cur.d}
-                onCursor={onChartCursor}
-                onScrubStart={onScrubStart}
+                playhead={playhead}
+                onHover={onChartHover}
+                onScrub={onScrub}
+                onRange={pinchCharts}
                 zeroLine={c.zero}
               />
             </div>
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Speed, gear and pedals at the playhead. Re-renders on its own as the replay moves. */
+function Readout({ samples, playhead, k, imperial }: { samples: Sample[]; playhead: Playhead; k: number; imperial: boolean }) {
+  const pos = usePlayhead(playhead);
+  if (!samples.length) return null;
+  const cur = samples[Math.max(0, Math.min(samples.length - 1, Math.round(pos)))];
+  const spd = lerpAt(samples, pos, (s) => s.spd);
+  const t = lerpAt(samples, pos, (s) => s.t);
+  return (
+    <div className="num text-right text-[13px] text-white/60">
+      <div>
+        {Math.round(spd * k)} {imperial ? "mph" : "km/h"} · G{cur.gear} · {cur.thr}% / {cur.brk}%
+      </div>
+      <div>t {split(t)}s</div>
     </div>
   );
 }

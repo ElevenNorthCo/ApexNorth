@@ -49,14 +49,19 @@ impl Priority {
     }
 }
 
+/// How long a protected call (pit, fuel and tyre news) may wait in the queue:
+/// long enough to get through everything said at the line.
+const PROTECTED_MAX_AGE: Duration = Duration::from_secs(45);
+
 #[derive(Debug, Clone)]
 pub struct Callout {
     pub text: String,
     pub priority: Priority,
     pub at: Instant,
     pub expected_position: Option<i16>,
-    /// Once playing, a protected call is never cut off by a higher priority
-    /// one (fuel and pit news at the line); the newer call waits its turn.
+    /// Pit, fuel and tyre news (and everything said at the line): goes to
+    /// the front of the queue, waits longer there, and once playing is never
+    /// cut off, not even by the link dropping. Newer calls wait their turn.
     pub protected: bool,
     /// Survives the session ending (the flag falls just before the game resets).
     pub outlives_session: bool,
@@ -98,7 +103,16 @@ impl Context {
     /// Relevant and not too old to be worth saying. Age only matters before
     /// playback starts: a long call must never be cut off for being "stale".
     fn current(&self, c: &Callout) -> bool {
-        self.relevant(c) && c.at.elapsed() < c.priority.max_age()
+        let max_age = if c.protected { PROTECTED_MAX_AGE } else { c.priority.max_age() };
+        self.relevant(c) && c.at.elapsed() < max_age
+    }
+
+    /// Whether a call being spoken has to stop: only when what it says is no
+    /// longer true (a position that has already changed), or the session it
+    /// was about is gone. Protected calls always finish.
+    fn obsolete(&self, c: &Callout) -> bool {
+        let position_moved = c.expected_position.is_some_and(|p| p != self.position.load(Ordering::Acquire));
+        position_moved || (!c.protected && !self.relevant(c))
     }
 }
 
@@ -158,7 +172,8 @@ impl Voice {
 }
 
 /// Queue a callout. Urgent news clears queued chatter, duplicates are
-/// dropped, and routine calls don't pile up behind a backlog.
+/// dropped, and routine calls don't pile up behind a backlog. Protected
+/// calls are never dropped to make room.
 fn enqueue(queue: &mut Vec<Callout>, c: Callout) {
     if c.expected_position.is_some() {
         queue.retain(|q| q.expected_position.is_none());
@@ -167,8 +182,8 @@ fn enqueue(queue: &mut Vec<Callout>, c: Callout) {
         return;
     }
     match c.priority {
-        Priority::High => queue.retain(|q| q.priority != Priority::Low),
-        Priority::Low if queue.len() >= 2 => return,
+        Priority::High => queue.retain(|q| q.priority != Priority::Low || q.protected),
+        Priority::Low if !c.protected && queue.len() >= 2 => return,
         _ => {}
     }
     queue.push(c);
@@ -219,8 +234,7 @@ fn worker<B: Backend>(rx: Receiver<Msg>, mut settings: VoiceSettings, mut backen
             None => {}
         }
         queue.retain(|c| context.current(c));
-        // Highest priority first, oldest first within a priority.
-        queue.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.at.cmp(&b.at)));
+        sort(&mut queue);
         if queue.is_empty() {
             continue;
         }
@@ -249,7 +263,7 @@ fn worker<B: Backend>(rx: Receiver<Msg>, mut settings: VoiceSettings, mut backen
         if !settings.enabled || !context.current(&c) {
             continue;
         }
-        if queue.iter().any(|q| q.priority > c.priority) {
+        if queue.iter().any(|q| ahead(q, &c)) {
             enqueue(&mut queue, c);
             continue;
         }
@@ -264,8 +278,21 @@ fn worker<B: Backend>(rx: Receiver<Msg>, mut settings: VoiceSettings, mut backen
     }
 }
 
-/// Wait for a callout to finish, queueing what arrives meanwhile. A more
-/// urgent call (or the session ending) cuts it off.
+/// Protected news first, then highest priority, oldest first within those.
+fn sort(queue: &mut [Callout]) {
+    queue.sort_by(|a, b| b.protected.cmp(&a.protected).then(b.priority.cmp(&a.priority)).then(a.at.cmp(&b.at)));
+}
+
+/// `a` should be said before `b`.
+fn ahead(a: &Callout, b: &Callout) -> bool {
+    (a.protected, a.priority) > (b.protected, b.priority)
+}
+
+/// Wait for a callout to finish, queueing what arrives meanwhile. Nothing
+/// cuts a call off for being more urgent: a driver loses the whole message
+/// if it stops halfway (pit news lost mid-sentence in the first corner).
+/// Only a call that has become untrue stops (a position that has already
+/// changed again), or the session it was about ending.
 #[allow(clippy::too_many_arguments)]
 fn play(
     mut playing: Box<dyn Playing + '_>,
@@ -279,14 +306,7 @@ fn play(
     playing.set_volume(settings.volume.clamp(0.0, 1.0));
     while !playing.finished() {
         match rx.recv_timeout(Duration::from_millis(25)) {
-            Ok(Msg::Say(c)) => {
-                let interrupt = !call.protected && c.priority > call.priority && context.current(&c);
-                enqueue(queue, c);
-                if interrupt {
-                    playing.stop();
-                    break;
-                }
-            }
+            Ok(Msg::Say(c)) => enqueue(queue, c),
             Ok(Msg::Configure(s)) => {
                 *settings = s;
                 playing.set_volume(settings.volume.clamp(0.0, 1.0));
@@ -298,7 +318,7 @@ fn play(
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
         }
-        if !settings.enabled || !context.relevant(call) {
+        if !settings.enabled || context.obsolete(call) {
             playing.stop();
             break;
         }
@@ -321,6 +341,37 @@ mod tests {
         context.position.store(3, Ordering::Release);
         context.generation.fetch_add(1, Ordering::AcqRel);
         assert!(!context.current(&c));
+    }
+
+    #[test]
+    fn only_untrue_or_stale_calls_stop_mid_sentence() {
+        let context = Context::default();
+        context.position.store(5, Ordering::Release);
+        let mut pos = Callout::new(Priority::Normal, "Up to P5.");
+        pos.expected_position = Some(5);
+        let mut pit = Callout::new(Priority::Normal, "Box this lap for fuel.");
+        pit.protected = true;
+        let chatter = Callout::new(Priority::Low, "Nice rhythm.");
+        assert!(!context.obsolete(&pos) && !context.obsolete(&pit) && !context.obsolete(&chatter));
+        context.position.store(4, Ordering::Release);
+        assert!(context.obsolete(&pos), "the position call is already wrong");
+        // The link drops: chatter stops, pit news finishes.
+        context.generation.fetch_add(1, Ordering::AcqRel);
+        assert!(context.obsolete(&chatter));
+        assert!(!context.obsolete(&pit));
+    }
+
+    #[test]
+    fn protected_news_goes_first_and_is_never_dropped() {
+        let mut q = vec![];
+        let mut fuel = Callout::new(Priority::Low, "Fuel for 6 laps.");
+        fuel.protected = true;
+        enqueue(&mut q, Callout::new(Priority::Low, "Nice rhythm."));
+        enqueue(&mut q, Callout::new(Priority::Low, "Good pace."));
+        enqueue(&mut q, fuel);
+        enqueue(&mut q, Callout::new(Priority::High, "You've had a spin."));
+        sort(&mut q);
+        assert_eq!(q.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["Fuel for 6 laps.", "You've had a spin."]);
     }
 
     #[test]

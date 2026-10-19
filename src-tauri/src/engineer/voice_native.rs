@@ -5,8 +5,7 @@
 //! `docs/mobile.md` for the plan to bring Kokoro to phones.
 //!
 //! The platform calls sit behind [`NativeSpeech`] (implemented in `lib.rs`
-//! with the `apexnorth-device` plugin), so the queueing, priorities and
-//! interruptions in `voice.rs` are the same code as on desktop.
+//! with the `apexnorth-device` plugin), so the queueing and priorities in `voice.rs` are the same code as on desktop.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,7 +34,7 @@ pub struct Utterance {
     pub text: String,
     /// A system voice id, or none for the best installed voice for `lang`.
     pub voice: Option<String>,
-    /// BCP 47 language, "en-GB" or "en-US".
+    /// BCP 47 language, "en-GB", "en-US", "en-AU" etc.
     pub lang: &'static str,
     pub rate: f32,
     pub volume: f32,
@@ -47,7 +46,12 @@ pub struct Utterance {
 /// unset voice gets a British one, like the desktop default (Emma).
 pub fn voice_for(model_path: &str) -> (Option<String>, &'static str) {
     if let Some(id) = model_path.strip_prefix(SYSTEM_PREFIX).filter(|id| !id.is_empty()) {
-        let lang = if id.to_ascii_lowercase().contains("en-us") || id.to_ascii_lowercase().contains("en_us") { "en-US" } else { "en-GB" };
+        // The language is in the id: "com.apple.voice.compact.en-AU.Karen", "en-us-x-iol-local".
+        let id_lower = id.to_ascii_lowercase().replace('_', "-");
+        let lang = [("en-us", "en-US"), ("en-au", "en-AU"), ("en-ie", "en-IE"), ("en-in", "en-IN"), ("en-za", "en-ZA")]
+            .iter()
+            .find(|(k, _)| id_lower.contains(k))
+            .map_or("en-GB", |(_, l)| l);
         return (Some(id.to_string()), lang);
     }
     match model_path.strip_prefix("kokoro:") {
@@ -163,6 +167,7 @@ mod tests {
         assert_eq!(voice_for("/voices/ryan.onnx"), (None, "en-GB"));
         assert_eq!(voice_for("system:en-us-x-iol-local"), (Some("en-us-x-iol-local".into()), "en-US"));
         assert_eq!(voice_for("system:com.apple.voice.compact.en-GB.Daniel"), (Some("com.apple.voice.compact.en-GB.Daniel".into()), "en-GB"));
+        assert_eq!(voice_for("system:com.apple.voice.enhanced.en-AU.Karen"), (Some("com.apple.voice.enhanced.en-AU.Karen".into()), "en-AU"));
         assert!((rate(0.9) - 1.111).abs() < 0.01);
     }
 
@@ -186,15 +191,17 @@ mod tests {
     }
 
     #[test]
-    fn urgent_call_cuts_off_chatter() {
-        let tts = fake(2_000);
+    fn urgent_call_waits_for_the_sentence_to_finish() {
+        let tts = fake(300);
         let backend_tts: Arc<dyn NativeSpeech> = tts.clone();
         let voice = Voice::start(VoiceSettings::default(), move || NativeBackend::new(backend_tts), |e| panic!("voice error: {e}"));
-        voice.say(Callout::new(Priority::Low, "Good pace."));
+        voice.say(Callout::new(Priority::Normal, "Box this lap for fuel."));
         wait_for(|| tts.speaking());
-        voice.say(Callout::new(Priority::High, "Box, box. Box this lap."));
+        voice.say(Callout::new(Priority::High, "You've had a spin."));
         wait_for(|| tts.said.lock().len() == 2);
-        assert_eq!(tts.said.lock()[1].0.text, "Box, box. Box this lap.");
-        assert!(*tts.stops.lock() >= 1, "chatter was stopped");
+        let said = tts.said.lock();
+        assert_eq!(said[1].0.text, "You've had a spin.");
+        assert_eq!(*tts.stops.lock(), 0, "nothing was cut off");
+        assert!(said[1].1 - said[0].1 >= Duration::from_millis(290));
     }
 }
