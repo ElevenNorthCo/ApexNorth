@@ -179,12 +179,12 @@ If the voice can't play, the dashboard shows a red **Voice off** line explaining
 - The Activity feed shows a card per session: track photo, country flag, venue and layout, track outline, car render with make and model, laps, best and average lap, and the delta to your previous best there.
 - **Race conditions:** note how each session was run (single player or online, BoP on or off, tyre wear and fuel multipliers) from the Session page. They show as chips on the Activity card. GT7 doesn't send these, so you set them by hand; fuel use itself is always measured. A new race at the same track, car and distance starts with the last one's conditions, so you only change them when they change. Pace comparisons (the Activity delta and pace by type) only use sessions whose conditions match.
 - **Session types:** tag a session as Practice, Qualifying, Race or Time Trial (or leave it on Auto). Filter the Activity feed by type, and see your best and average pace at that track by type, e.g. clean time-trial pace against race pace with traffic and tyre wear.
-- Each Activity card shows a transparent render of the car you drove, centred above its make and model (574 cars, `src/assets/cars/`). A car newer than the bundled set just shows its name.
+- Each Activity card shows a transparent render of the car you drove, centred above its make and model (580 cars, `src/assets/cars/`). A car newer than the bundled set just shows its name.
 - Every one of the 41 GT7 venues has a preview photo (`src/assets/tracks/`, one per venue, shared by all its layouts). It shows on the Activity card and in the Session header. A session whose track wasn't recognised gets generated art from its outline.
 - The lap table shows 5 sector splits, with the purple best lap and purple best sectors highlighted. It also shows fuel used per lap.
 - **Pit detection:** a refuel or a stop flags the lap as a pit lap and keeps it out of best-lap records.
 - Invalid laps (a rewind or reset, a lap you joined mid-way, or a race's opening lap from a grid that sits past the start line) are flagged and excluded.
-- **Real track and car names.** GT7 doesn't send a track ID, so ApexNorth recognises the track from the line you drove. It checks the lap against a built-in catalog of all 121 GT7 layouts, including reverse layouts and chicane / no-chicane variants. Cars are named from the full GT7 car list (584 cars), e.g. "Porsche 911 GT3 RS (992) '22".
+- **Real track and car names.** GT7 doesn't send a track ID, so ApexNorth recognises the track from the line you drove. It checks the lap against a built-in catalog of all 122 GT7 layouts, including reverse layouts and chicane / no-chicane variants. Cars are named from the full GT7 car list (590 cars), e.g. "Porsche 911 GT3 RS (992) '22".
 - A track the catalog can't place gets a placeholder name. Rename it from the session page, where the box suggests every GT7 track.
 
 ### Lap analysis & playback
@@ -325,7 +325,7 @@ src-tauri/gen/android/   Android Studio project (iOS's gen/apple is generated in
 src/
   views/                 Connect, Dashboard, Activity, Session, LapAnalysis, Settings
   components/            Tile, TrackMap, TelemetryChart (uPlot), TrackOutline, Art, Flag, icons
-  assets/                tracks/ (41 venue photos), cars/ (574 car renders)
+  assets/                tracks/ (42 venue photos), cars/ (580 car renders)
   lib/                   api (typed commands), store (Zustand), format helpers
 ```
 
@@ -425,7 +425,7 @@ The tests cover:
 
 ### ✅ Phase 3.6: ApexNorth look & race position
 - [x] New neon UI: dashboard, top toolbar, Activity cards, Session, Settings and Connect redesigned
-- [x] Country flags; preview photos for all 41 venues on Activity cards and the Session header
+- [x] Country flags; preview photos for all 42 venues on Activity cards and the Session header
 - [x] Session types (Practice / Qualifying / Race / Time Trial) with filters and pace comparison per type
 - [x] Race position callouts: gains, losses, lead, podium, start summary, chase encouragement
 
@@ -442,7 +442,7 @@ The tests cover:
 - [x] Pace is compared only across matching conditions (BoP, tyre wear, fuel), on the Activity delta and the Session page's pace by type
 
 ### ✅ Phase 3.8: Car images
-- [x] 574 transparent car renders on Activity cards, centred and sized up, mapped from the GT7 car code (`src/lib/carImages.json`)
+- [x] 580 transparent car renders on Activity cards, centred and sized up, mapped from the GT7 car code (`src/lib/carImages.json`)
 - [x] Activity card layout rebalanced: the track outline sits beside the date so long names ("Fuji International Speedway") fit on one line, and the car image shrinks to make room for long car names and condition chips
 - [x] Lap analysis legend no longer hidden behind the back button
 - [x] A race's opening lap no longer counts when the grid sits past the line (Fuji): it's checked against the next full lap, and laps saved before the fix are repaired on launch
@@ -457,8 +457,8 @@ The tests cover:
 - [x] Ryan and the downloadable Piper voices removed: their training data is noncommercial or research-only. Only Kokoro ships now
 - [x] **Test voice** plays the whole phrase (status updates while not connected used to cut it off)
 - [x] Beta channel: the `beta` branch publishes a rolling test build ([beta-latest](https://github.com/ElevenNorthCo/ApexNorth/releases/tag/beta-latest)); merging to `main` with a new version publishes the release
-- [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 584 cars (verified live on PS5, 2026-10-03)
-- [x] Built-in track database: all 121 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch (verified live on PS5, 2026-10-03)
+- [x] GT7 car-name lookup (car code → "Porsche 911 GT3 (996) '01"), all 590 cars (verified live on PS5, 2026-10-03)
+- [x] Built-in track database: all 122 layouts listed, 113 recognised automatically from the driven line (forward/reverse and chicane variants included), older sessions renamed on launch (verified live on PS5, 2026-10-03)
 - [ ] Track database extras: real outlines and track-specific sectors
 - [ ] Multiple dashboard layouts, plus speed/G-force/steering widgets
 - [ ] Pre-race strategy briefing (fuel needed, planned stops)
@@ -522,7 +522,7 @@ From a live playtest on iPhone; every fix applies to all platforms.
 
 ## Known limitations
 - **Tracks:** GT7 doesn't report a track ID, so tracks are recognised from the lap's line.
-  - 8 of the 121 layouts have no reference line yet. Short layouts (Suzuka East, Nürburgring Sprint, Red Bull Ring Short Track, Autopolis Short Course) are matched by venue and length.
+  - 9 of the 122 layouts have no reference line yet (incl. SUGO, new in GT7 1.72: rename a SUGO session to link it). Short layouts (Suzuka East, Nürburgring Sprint, Red Bull Ring Short Track, Autopolis Short Course) are matched by venue and length.
   - Barcelona Rallycross can't be recognised yet.
   - Nordschleife Tourist, Nürburgring Endurance II and Fuji (Short) drive the same line as their sister layouts, so they are named as those. Rename the track to fix that; the name sticks.
   - Anything unrecognised is named "Track N (x.xx km)" until you rename it.

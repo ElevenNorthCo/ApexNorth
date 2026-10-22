@@ -36,6 +36,7 @@ mod tests {
         assert!(table().len() > 500, "only {} cars loaded", table().len());
         assert_eq!(car_name(3442), Some("Autobianchi A112 Abarth '85"));
         assert_eq!(car_name(24), Some("Nissan 180SX Type X '96"));
+        assert_eq!(car_name(3654), Some("Ferrari F355 Berlinetta '94"));
         assert_eq!(car_name(-1), None);
         assert_eq!(car_name(0), None);
     }

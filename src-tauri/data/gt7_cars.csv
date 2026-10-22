@@ -48,6 +48,7 @@ id,name
 604,Toyota 2000GT '67
 655,BMW Z4 3.0i '03
 665,Plymouth Superbird '70
+683,Honda Civic Si Group A version '87
 688,Honda Integra Type R (DC2) '95
 709,Nissan Fairlady Z 300ZX TT 2seater '89
 729,Renault Avantime 3.0 V6 24V '02
@@ -580,6 +581,11 @@ id,name
 3606,Peugeot 9X8 '25
 3607,Porsche 963 '24
 3608,Porsche 911 Turbo S Safety Car (992)
+3609,Mazda RX-VISION GT3 EVO '26
 3610,Hyundai IONIQ 6N '25
 3611,Toyota Mark II Tourer V '97
 3612,Toyota Chaser Tourer V '97
+3653,Citroen 2 CV 6 Charleston '86
+3654,Ferrari F355 Berlinetta '94
+3655,Honda Step WGN Spada Premium Line '23
+3656,Xiaomi VGT
