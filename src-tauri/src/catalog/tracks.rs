@@ -417,9 +417,10 @@ mod tests {
     #[test]
     fn catalog_lists_every_layout() {
         let c = catalog();
-        assert_eq!(c.layouts().len(), 121);
+        assert_eq!(c.layouts().len(), 122);
         assert!(c.layouts().iter().filter(|l| l.geo.is_some()).count() >= 110);
         assert!(c.by_name("suzuka circuit").is_some());
+        assert_eq!(c.by_id("sugo").map(|l| l.name.as_str()), Some("SUGO International Racing Course"));
     }
 
     #[test]

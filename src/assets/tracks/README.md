@@ -25,6 +25,7 @@ One image per venue (not per layout), named exactly as below. Wide landscape sho
 | Japan | High Speed Ring | `high-speed-ring.jpg` |
 | Japan | Kyoto Driving Park | `kyoto-driving-park.jpg` |
 | Japan | Suzuka Circuit | `suzuka-circuit.jpg` |
+| Japan | SUGO International Racing Course | `sugo-international-racing-course.jpg` |
 | Japan | Tokyo Expressway | `tokyo-expressway.jpg` |
 | Japan | Tsukuba Circuit | `tsukuba-circuit.jpg` |
 | Spain | Circuit de Barcelona-Catalunya | `circuit-de-barcelona-catalunya.jpg` |

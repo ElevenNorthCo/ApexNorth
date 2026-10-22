@@ -23,6 +23,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "src-tauri" / "data"
 
+# Layouts in the game that the track source doesn't list yet (no racing line, so
+# they're named by rename, not recognised). Once the source adds one by the same
+# name, its geometry is used but our id stays, so tracks already linked to it
+# keep their layout.
+EXTRA_LAYOUTS = [
+    # GT7 1.72 (Spec IV Part 1, 2026-10-15)
+    {"id": "sugo", "name": "SUGO International Racing Course", "venue": "SUGO International Racing Course",
+     "country": "Japan", "lengthM": 3586, "reverse": False},
+]
+
 
 def cars(src: Path) -> int:
     db = src / "gt7info" / "_data" / "db"
@@ -74,6 +84,13 @@ def tracks(src: Path) -> tuple[int, int]:
             entry["reverseOf"] = reverse_of[lid]
             with_geometry += 1
         layouts.append(entry)
+    by_name = {l["name"].casefold(): l for l in layouts}
+    for extra in EXTRA_LAYOUTS:
+        known = by_name.get(extra["name"].casefold())
+        if known:
+            known["id"] = extra["id"]
+        else:
+            layouts.append(dict(extra))
     layouts.sort(key=lambda l: l["name"].casefold())
     doc = {
         "source": "jbhoorasingh/gt7-datalogger-track-data (CC0) incl. zetetos/gt-telemetry (MIT)",

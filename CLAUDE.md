@@ -46,7 +46,7 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
          ├ strategy.rs    fuel + tyres → PitPlan
          └ incidents.rs   SpinDetector
        storage/mod.rs     → SQLite (tracks, sessions, laps; samples = zstd(bincode(Vec<Sample>)))
-         └ catalog/       built-in GT7 data: cars.rs (car_code → name), tracks.rs (121 layouts, lap → layout)
+         └ catalog/       built-in GT7 data: cars.rs (car_code → name), tracks.rs (122 layouts, lap → layout)
        engineer/rules.rs  → candidate Calls (+ live.rs: tyre temps, wheel slip)
          → director.rs    chatter level, category toggle, anti-nag cooldown, routine gap, calm-moment hold
          → voice.rs       priority queue (High clears Low) → Speaker → cached WAV → rodio
@@ -101,9 +101,9 @@ telemetry/udp.rs   link thread: heartbeat → PS:33739, recv :33740, LAN discove
   - Fonts: `.tech` (Chakra Petch, uppercase labels/tabs), `.brand` (Saira italic 900, wordmark and page titles), `.an-bg` page backdrop.
   - `components/Tile.tsx` is the neon panel (`notch` puts the label in the top border).
   - Numbers use the `.num` class (JetBrains Mono, slashed zero).
-- **Artwork:** all 41 venues have a 1280×720 photo in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob. `TrackArt` (`components/Art.tsx`) shows it on Activity cards (`fade="right"`) and the Session header (`fade="left"`); unrecognised tracks get generated art. Don't add a Settings section for artwork (the user asked for none). Flags are SVGs in `components/Flag.tsx`.
+- **Artwork:** all 42 venues have a 1280×720 photo in `src/assets/tracks/<venue-slug>.jpg` (file list in the README there); `lib/media.ts` picks them up by glob. `TrackArt` (`components/Art.tsx`) shows it on Activity cards (`fade="right"`) and the Session header (`fade="left"`); unrecognised tracks get generated art. Don't add a Settings section for artwork (the user asked for none). Flags are SVGs in `components/Flag.tsx`.
 - **Car images:**
-  - 574 transparent 600×350 WebP renders live in `src/assets/cars/<slug>.webp` (about 19 MB, bundled). They are made in the separate repo `~/Projects/ElevenNorth/apexnorthCarAssets` (done, 574 of 574).
+  - 580 transparent 600×350 WebP renders live in `src/assets/cars/<slug>.webp` (about 19 MB, bundled). They are made in the separate repo `~/Projects/ElevenNorth/apexnorthCarAssets` (done, 580 of 580 incl. the six from GT7 1.72).
   - `src/lib/carImages.json` maps GT7 `car_code` → file name (built from that repo's `gt7-cars.csv`, `GT7 ID` column `carNNNN`). `carImage(code)` in `lib/media.ts` resolves it through a Vite glob. A code with no image (about 10 newer cars in `data/gt7_cars.csv`) just shows no image.
   - Under 1024 px wide (phones) the Car column is hidden, so a smaller render and the name sit in the title column instead (`lg:hidden` block in `Activity.tsx`).
   - Shown as a thumbnail above the make/model text in the Activity card's Car column; the text stays. Not yet used on the Session header. The image is centred, up to 112 px tall, and shrinks (`flex-1 min-h-0`) so long car names and condition chips never overflow the 208 px card. The track outline sits in the title column next to the date (no column of its own), so "Fuji International Speedway" fits on one line at 21 px. The kind chip isn't repeated in the Car column (it's already in the date line).
