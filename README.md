@@ -512,9 +512,13 @@ From a live playtest on iPhone; every fix applies to all platforms.
 - [x] **Copy for AI** on the Session page and Lap analysis: a Markdown report with laps, sectors, corners found from the speed trace and a 50 m trace, made for pasting into Claude or ChatGPT
 
 ### 🔜 Next
-- [ ] Refresh the car and track catalogs for the latest GT7 update (new cars and a new track): `scripts/build_gt7_data.py`, then add the new car renders and a track photo
+- [x] Refresh the car and track catalogs for GT7 1.72 (six new cars with renders, SUGO with a track photo): 0.5.1
+- [ ] Test Rival mode and Copy for AI on every device (desktop, Android, iPhone), then release them as 0.5.2
+- [ ] A racing line for SUGO so it's recognised automatically (built from a recorded lap)
+- [ ] Spec IV Part 2 (December 2026): new cars and Autumn Ring
 
 ### 🔮 Phase 5: AI coach
+Until this is built in, **Copy for AI** (Phase 4.7) hands a session or a lap comparison to Claude or ChatGPT by copy and paste.
 - [ ] Lap analysis by Claude: compare against your best, find braking points, minimum corner speeds and throttle application
 - [ ] A per-corner "where you lost time" report after each session
 - [ ] Spoken coaching tips between laps

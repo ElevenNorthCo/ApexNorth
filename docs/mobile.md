@@ -18,6 +18,7 @@ Almost nothing. The shared code is everything under `src/` (UI) and `src-tauri/s
 | Keeping the screen on while live | `keepawake` crate | `FLAG_KEEP_SCREEN_ON` / `isIdleTimerDisabled` | `platform.rs` + `plugins/device` |
 | Updates | Signed in-app updater | Android: the same Update button, which downloads the new APK and hands it to Android's installer. iPhone: TestFlight / App Store (iOS apps can't update themselves) | `updater.rs` + `plugins/device` |
 | Navigation | Top toolbar | Bottom tab bar (any screen under 900 × 520) | `components/MobileNav.tsx` |
+| Copy for AI | Copy, plus **Save file** (save dialog) | Copy, plus **Share** where the webview supports it; no Save file | `components/ExportDialog.tsx` |
 | Dashboard | 1000 × 540 canvas | Same canvas in landscape; a 540 × 1140 portrait canvas with the same tiles | `views/Dashboard.tsx` (`LANDSCAPE` / `PORTRAIT`) |
 
 **What the engineer says is identical.** Only the last step, turning text into sound, differs. The queue, priorities, chatter levels, cooldowns and every rule live in shared Rust (`engineer/voice.rs` talks to a `Backend` trait). The phone backend has its own unit tests with a fake speech engine (`voice_native.rs`).
@@ -119,7 +120,7 @@ apexnorth-ios                 # latest of the current branch
 apexnorth-ios --branch main   # switch branch first; --no-pull builds what's checked out
 ```
 
-The team ID stays out of the repo (it's in `~/.config/apexnorth/ios.env`). The phone must have been paired with the Mac once over USB, have Developer Mode on, and be on the same network. With a free Apple ID the app stops opening after 7 days: run it again. The script works even when `xcode-select` points at the Command Line Tools (it puts `xcodebuild`/`xcrun` shims for the full Xcode first on `PATH`; Tauri ignores `DEVELOPER_DIR` otherwise), and copies `src-tauri/icons/ios` into the generated project (`tauri ios init` leaves Tauri's placeholder icon).
+The team ID stays out of the repo (it's in `~/.config/apexnorth/ios.env`). The phone must have been paired with the Mac once over USB, have Developer Mode on, and be on the same network. With a free Apple ID the app stops opening after 7 days: run it again. After a lapse Apple may also drop the phone from your team ("Your team has no devices…" / "No profiles for 'com.elevennorth.apexnorth'"); the script spots that, re-registers the phone with an `xcodebuild -allowProvisioningDeviceRegistration` build aimed at it, and retries. The script works even when `xcode-select` points at the Command Line Tools (it puts `xcodebuild`/`xcrun` shims for the full Xcode first on `PATH`; Tauri ignores `DEVELOPER_DIR` otherwise), and copies `src-tauri/icons/ios` into the generated project (`tauri ios init` leaves Tauri's placeholder icon).
 
 ### Getting it onto your iPhone
 
