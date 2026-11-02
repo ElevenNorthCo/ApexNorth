@@ -97,9 +97,21 @@ cp src-tauri/icons/ios/*.png src-tauri/gen/apple/Assets.xcassets/AppIcon.appicon
 
 log="$(mktemp -t apexnorth-ios-build)"
 say "Compiling (a few minutes; log: $log)"
-if ! APPLE_DEVELOPMENT_TEAM="$team" npx tauri ios build --ci --target aarch64 --export-method debugging >"$log" 2>&1; then
-  grep -E 'error:|Error ' "$log" | tail -10 >&2
-  die "Build failed. Full log: $log"
+build() { APPLE_DEVELOPMENT_TEAM="$team" npx tauri ios build --ci --target aarch64 --export-method debugging >"$log" 2>&1; }
+if ! build; then
+  # A free Apple ID's profile has expired and Apple has dropped the phone
+  # from the team: register it again with a build aimed at the phone (only
+  # the signing step matters; that build's own failure is expected), retry.
+  if grep -qE 'has no devices|No profiles for' "$log"; then
+    say "Signing expired: registering your iPhone with Apple again"
+    (cd src-tauri/gen/apple && xcodebuild -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+      -scheme apexnorth_iOS -workspace apexnorth.xcodeproj/project.xcworkspace -destination "id=$device" \
+      -configuration release DEVELOPMENT_TEAM="$team" build >"$log.register" 2>&1 || true)
+    build || { grep -E 'error:|Error ' "$log" | tail -10 >&2; die "Build failed. Full log: $log (registration log: $log.register)"; }
+  else
+    grep -E 'error:|Error ' "$log" | tail -10 >&2
+    die "Build failed. Full log: $log"
+  fi
 fi
 
 ipa="$(ls -t src-tauri/gen/apple/build/arm64/*.ipa | head -1)"
