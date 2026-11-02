@@ -1,5 +1,6 @@
 mod catalog;
 mod engineer;
+mod export;
 mod platform;
 mod session;
 mod settings;
@@ -60,7 +61,12 @@ struct AppState {
     status: Arc<Mutex<ConnStatus>>,
     link: Mutex<Option<Link>>,
     sim: Mutex<Option<Simulator>>,
+    rival: RivalMode,
 }
+
+/// Rival mode: Some(name) while recording someone else's replay. Laps are
+/// saved under their name and the engineer stays quiet.
+type RivalMode = Arc<RwLock<Option<String>>>;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,6 +97,7 @@ struct LiveHandler {
     session: Option<SessionCtx>,
     last_emit: Instant,
     awake: platform::ScreenAwake,
+    rival: RivalMode,
 }
 
 struct SessionCtx {
@@ -103,6 +110,8 @@ struct SessionCtx {
     /// learned from earlier sessions here.
     conditions: Option<storage::SessionConditions>,
     fade_per_wear: Option<f32>,
+    /// Rival mode when this session's laps started being saved.
+    rival: Option<String>,
 }
 
 fn now_ms() -> i64 {
@@ -111,6 +120,10 @@ fn now_ms() -> i64 {
 
 impl LiveHandler {
     fn speak(&self, callouts: Vec<Callout>) {
+        // A rival's replay: nothing to tell the driver.
+        if self.rival.read().is_some() {
+            return;
+        }
         for c in callouts {
             smoke(|| format!("engineer: {}", c.text));
             let _ = self.app.emit("engineer", &c.text);
@@ -124,7 +137,12 @@ impl LiveHandler {
         let session_id = match ctx.db_id {
             Some(id) => id,
             None => match db.create_session(ctx.car_code, ctx.total_laps as i32, ctx.started_at) {
-                Ok(id) => *ctx.db_id.insert(id),
+                Ok(id) => {
+                    if let Some(name) = &ctx.rival {
+                        let _ = db.set_session_rival(id, Some(name));
+                    }
+                    *ctx.db_id.insert(id)
+                }
                 Err(e) => {
                     log::error!("create session: {e}");
                     return;
@@ -177,6 +195,7 @@ impl LiveHandler {
                     sectors_ms: lap.sectors_ms.clone(),
                     fuel_used_pct: lap.fuel_used_pct.map(|f| f as f64),
                     max_speed: lap.max_speed as f64,
+                    rival: ctx.rival.clone(),
                 };
                 smoke(|| format!("lap {} recorded: {} ms, valid {}, session {session_id}", lap.lap_no, lap.time_ms, lap.is_valid));
                 let _ = self.app.emit(
@@ -189,8 +208,31 @@ impl LiveHandler {
     }
 }
 
+impl LiveHandler {
+    /// Rival mode switched on or off mid-session: what's driven from here on
+    /// is someone else's (or yours again), so it goes in a new session and
+    /// the engine forgets the bests set so far.
+    fn sync_rival(&mut self) {
+        let mode = self.rival.read().clone();
+        let Some(ctx) = self.session.as_mut() else { return };
+        if ctx.rival == mode {
+            return;
+        }
+        self.voice.clear();
+        ctx.rival = mode;
+        ctx.db_id = None;
+        self.engine.forget_bests();
+        if let Some((track_id, _)) = &ctx.track {
+            if let Ok(Some((time_ms, samples))) = self.db.lock().best_lap_for(*track_id, ctx.car_code) {
+                self.engine.set_reference(RefLap { time_ms, samples, standing_start: false });
+            }
+        }
+    }
+}
+
 impl Handler for LiveHandler {
     fn packet(&mut self, p: Packet) {
+        self.sync_rival();
         let cfg = {
             let s = self.settings.read();
             EngineerConfig {
@@ -212,6 +254,7 @@ impl Handler for LiveHandler {
                         track: None,
                         conditions: None,
                         fade_per_wear: None,
+                        rival: self.rival.read().clone(),
                     });
                 }
                 EngineEvent::SessionEnded => {
@@ -289,6 +332,7 @@ fn start_link(app: &AppHandle, state: &AppState, target: Target) {
         session: None,
         last_emit: Instant::now(),
         awake: platform::ScreenAwake::new(app),
+        rival: state.rival.clone(),
     };
     *state.link.lock() = Some(Link::start(target, handler));
 }
@@ -383,6 +427,44 @@ fn set_session_kind(state: State<AppState>, session_id: i64, kind: Option<String
 #[tauri::command]
 fn set_session_conditions(state: State<AppState>, session_id: i64, conditions: Option<storage::SessionConditions>) -> Result<(), String> {
     state.db.lock().set_session_conditions(session_id, conditions.as_ref())
+}
+
+#[tauri::command]
+fn set_session_rival(state: State<AppState>, session_id: i64, rival: Option<String>) -> Result<(), String> {
+    state.db.lock().set_session_rival(session_id, rival.as_deref())
+}
+
+/// Rival mode on (with the rival's name) or off.
+#[tauri::command]
+fn set_rival_mode(state: State<AppState>, name: Option<String>) {
+    let name = name.map(|n| n.trim().to_string()).map(|n| if n.is_empty() { "Rival".into() } else { n });
+    if name.is_some() {
+        state.voice.clear();
+    }
+    *state.rival.write() = name;
+}
+
+#[tauri::command]
+fn rival_mode(state: State<AppState>) -> Option<String> {
+    state.rival.read().clone()
+}
+
+/// A Markdown report of a session for an AI chat (see `export.rs`).
+#[tauri::command]
+async fn export_session(state: State<'_, AppState>, session_id: i64) -> Result<String, String> {
+    export::session_report(&state.db.lock(), session_id)
+}
+
+/// A Markdown report of one lap, against another when given (see `export.rs`).
+#[tauri::command]
+async fn export_lap(state: State<'_, AppState>, lap_id: i64, compare_id: Option<i64>) -> Result<String, String> {
+    export::lap_report(&state.db.lock(), lap_id, compare_id)
+}
+
+/// Write an export where the user chose (desktop save dialog).
+#[tauri::command]
+fn save_text(path: String, text: String) -> Result<(), String> {
+    std::fs::write(&path, text).map_err(|e| format!("Couldn't save {path}: {e}"))
 }
 
 #[tauri::command]
@@ -616,6 +698,7 @@ pub fn run() {
                 status: Arc::new(Mutex::new(ConnStatus::idle())),
                 link: Mutex::new(None),
                 sim: Mutex::new(None),
+                rival: RivalMode::default(),
             });
 
             if SMOKE.load(Ordering::Relaxed) {
@@ -652,6 +735,12 @@ pub fn run() {
             delete_session,
             set_session_kind,
             set_session_conditions,
+            set_session_rival,
+            set_rival_mode,
+            rival_mode,
+            export_session,
+            export_lap,
+            save_text,
             voice_builtin,
             rename_track,
             track_catalog,

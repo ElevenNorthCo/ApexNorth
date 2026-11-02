@@ -6,6 +6,8 @@ import { TrackMap } from "../components/TrackMap";
 import { TelemetryChart, type ChartSeries } from "../components/TelemetryChart";
 import { Back, Pause, Play } from "../components/icons";
 import { Playhead, lerpAt, posAt, seek, usePlayhead } from "../lib/playhead";
+import { ExportDialog } from "../components/ExportDialog";
+import { RIVAL_COLOR } from "./Dashboard";
 
 const SECTORS = 5;
 /** Closest a pinch can zoom the charts, in metres of track. */
@@ -113,11 +115,13 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
   const [chartRange, setChartRange] = useState<[number, number] | null>(null);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setLap(null);
     setPlaying(false);
     setChartRange(null);
+    setCmpId(null);
     api
       .getLap(lapId)
       .then(async (l) => {
@@ -129,7 +133,11 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
         ]);
         const seen = new Set<number>([l.id]);
         const merged = [...own.filter((o) => o.isValid), ...track].filter((o) => !seen.has(o.id) && seen.add(o.id));
-        setOptions(merged.sort((a, b) => a.timeMs - b.timeMs));
+        const sorted = merged.sort((a, b) => a.timeMs - b.timeMs);
+        setOptions(sorted);
+        // Your lap against a rival's: the fastest rival lap is the ghost to chase.
+        const rival = l.rival == null ? sorted.find((o) => o.rival != null) : undefined;
+        if (rival) setCmpId(rival.id);
       })
       .catch((e) => setError(String(e)));
   }, [lapId]);
@@ -298,6 +306,25 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
             <h1 className="num mt-1 text-[28px] font-bold">
               Lap {lap.lapNo} · {lapTime(lap.timeMs)}
             </h1>
+            {lap.rival != null && (
+              <div className="tech mt-1 inline-block rounded-[6px] px-2 py-0.5 text-[12px] font-bold text-black" style={{ background: RIVAL_COLOR }}>
+                Rival · {lap.rival}
+              </div>
+            )}
+            <button
+              onClick={() => setExporting(true)}
+              className="tech ml-2 mt-1 rounded-[8px] border border-accent/60 px-2.5 py-1 text-[12px] text-accent hover:bg-accent/10"
+              title={cmp ? "Copy this lap and the compared lap as text for Claude or ChatGPT" : "Copy this lap as text for Claude or ChatGPT"}
+            >
+              Copy for AI{cmp ? " (with compare)" : ""}
+            </button>
+            {exporting && (
+              <ExportDialog
+                load={() => api.exportLap(lap.id, cmp?.id)}
+                filename={`apexnorth-lap-${lap.id}${cmp ? `-vs-${cmp.id}` : ""}.md`}
+                onClose={() => setExporting(false)}
+              />
+            )}
           </div>
           <Readout samples={samples} playhead={playhead} k={k} imperial={imperial} />
         </div>
@@ -315,7 +342,9 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
             </thead>
             <tbody>
               <tr className="border-b border-white/10">
-                <td className="px-4 py-3 font-sans font-semibold text-accent">Lap {lap.lapNo}</td>
+                <td className="px-4 py-3 font-sans font-semibold" style={{ color: lap.rival != null ? RIVAL_COLOR : "var(--color-accent)" }}>
+                  {lap.rival != null ? lap.rival : `Lap ${lap.lapNo}`}
+                </td>
                 {Array.from({ length: SECTORS }, (_, i) => (
                   <td key={i} className="px-3 py-3 text-right">{split(lap.sectorsMs[i])}</td>
                 ))}
@@ -326,16 +355,22 @@ export function LapAnalysis({ lapId, sessionId }: { lapId: number; sessionId?: n
                   <select
                     value={cmpId ?? ""}
                     onChange={(e) => setCmpId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full rounded-lg bg-transparent font-sans font-semibold text-accent outline-none"
+                    className="w-full rounded-lg bg-transparent font-sans font-semibold outline-none"
+                    style={{ color: cmp?.rival != null ? RIVAL_COLOR : "var(--color-accent)" }}
                   >
                     <option value="">⊕ Compare</option>
                     {options.map((o) => (
                       <option key={o.id} value={o.id}>
-                        {lapTime(o.timeMs)} · lap {o.lapNo}
-                        {o.sessionId === lap.sessionId ? "" : " (other session)"}
+                        {lapTime(o.timeMs)} · {o.rival != null ? `RIVAL ${o.rival}` : `lap ${o.lapNo}`}
+                        {o.rival != null || o.sessionId === lap.sessionId ? "" : " (other session)"}
                       </option>
                     ))}
                   </select>
+                  {cmp?.rival != null && (
+                    <div className="tech truncate text-[11px] font-semibold" style={{ color: RIVAL_COLOR }}>
+                      Rival · {cmp.rival}
+                    </div>
+                  )}
                 </td>
                 {Array.from({ length: SECTORS }, (_, i) => (
                   <td key={i} className="px-3 py-2 text-right text-white/70">{cmp ? split(cmp.sectorsMs[i]) : "—"}</td>

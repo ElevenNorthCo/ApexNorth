@@ -7,6 +7,7 @@ import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
 import { Flag } from "../components/Flag";
 import { ChevronRight } from "../components/icons";
+import { RIVAL_COLOR } from "./Dashboard";
 
 export function Activity() {
   const go = useStore((s) => s.go);
@@ -29,7 +30,15 @@ export function Activity() {
     const all = sessions ?? [];
     all.forEach((s, i) => {
       if (s.bestMs == null) return;
-      const earlier = all.slice(i + 1).filter((e) => s.trackId != null && e.trackId === s.trackId && e.bestMs != null && conditionsMatch(e.conditions, s.conditions));
+      // A rival's session: how far your best in this car is off theirs.
+      if (s.rival != null) {
+        const mine = all.filter((e) => e.rival == null && e.trackId != null && e.trackId === s.trackId && e.carCode === s.carCode && e.bestMs != null);
+        if (mine.length) out.set(s.id, { ms: Math.min(...mine.map((e) => e.bestMs!)) - s.bestMs, label: "You vs rival" });
+        return;
+      }
+      const earlier = all
+        .slice(i + 1)
+        .filter((e) => e.rival == null && s.trackId != null && e.trackId === s.trackId && e.bestMs != null && conditionsMatch(e.conditions, s.conditions));
       const sameCar = earlier.filter((e) => e.carCode === s.carCode);
       const pool = sameCar.length ? sameCar : earlier;
       if (pool.length) out.set(s.id, { ms: s.bestMs - Math.min(...pool.map((e) => e.bestMs!)), label: "Vs prev best" });
@@ -102,7 +111,7 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
   const [maker, model] = splitCar(fullCar);
   const cls = carClass(s.carName);
   const img = carImage(s.carCode);
-  const c = kind.color;
+  const c = s.rival != null ? RIVAL_COLOR : kind.color;
   return (
     <button
       onClick={onOpen}
@@ -137,7 +146,8 @@ function SessionCard({ s, gain, onOpen }: { s: SessionSummary; gain: Gain | unde
           <div className="min-w-0">
             <div className="text-[16px] text-white/90">{shortDate(s.startedAt)}</div>
             <div className="truncate text-[15px] text-white/55">
-              <span style={{ color: c }}>{kind.label}</span> · GT7 · {timeOfDay(s.startedAt)}
+              {s.rival != null && <span style={{ color: RIVAL_COLOR }}>Rival · {s.rival} · </span>}
+              <span style={{ color: kind.color }}>{kind.label}</span> · GT7 · {timeOfDay(s.startedAt)}
             </div>
           </div>
           <div className="mr-3 shrink-0 max-xl:hidden">

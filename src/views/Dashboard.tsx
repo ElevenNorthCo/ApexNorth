@@ -156,7 +156,10 @@ export function Dashboard({ onToggleNav, navOpen }: { onToggleNav: () => void; n
         </button>
 
         <ShiftLights l={l} at={L.shift} />
-        <StatusBadge status={status} paused={!!l?.paused} onClick={() => go({ name: "connect" })} at={L.badge} />
+        <div className="absolute flex items-start gap-[8px]" style={L.badge}>
+          <RivalButton />
+          <StatusBadge status={status} paused={!!l?.paused} onClick={() => go({ name: "connect" })} />
+        </div>
 
         <Tile label="Position" color="var(--color-pos)" style={L.position}>
           <Big value={l?.position != null ? `P${l.position}` : DASH} of={l?.numCars} />
@@ -252,7 +255,89 @@ function ShiftLights({ l, at }: { l: LiveState | null; at: At }) {
   );
 }
 
-function StatusBadge({ status, paused, onClick, at }: { status: ConnStatus; paused: boolean; onClick: () => void; at: At }) {
+/** Rival red: someone else's laps. */
+export const RIVAL_COLOR = "#ff4d6d";
+const RIVAL_NAME_KEY = "apexnorth.rivalName";
+
+/**
+ * Rival mode, for recording someone else's replay (GT7 lets you watch other
+ * drivers' replays in some events): their laps are saved under their name,
+ * never count as yours, and the engineer stays quiet.
+ */
+function RivalButton() {
+  const rival = useStore((s) => s.rival);
+  const setRival = useStore((s) => s.setRival);
+  const [asking, setAsking] = useState(false);
+  // An upright phone has no room for the name beside the logo.
+  const { compact, portrait } = useViewport();
+  const [name, setName] = useState(() => localStorage.getItem(RIVAL_NAME_KEY) ?? "");
+  const pill = "num flex h-[30px] items-center gap-[8px] whitespace-nowrap rounded-full px-[14px] text-[14px] font-bold tracking-[0.06em]";
+  if (rival != null) {
+    return (
+      <button
+        onClick={() => setRival(null)}
+        className={`${pill} max-w-[200px]`}
+        style={{ color: "#050807", background: RIVAL_COLOR, boxShadow: `0 0 14px ${RIVAL_COLOR}` }}
+        title={`Recording ${rival}'s replay. Tap to go back to your own laps.`}
+      >
+        <span className="inline-block h-[10px] w-[10px] animate-pulse rounded-full bg-[#050807]" />
+        <span className="truncate">{compact && portrait ? "RIVAL" : `RIVAL · ${rival}`}</span>
+      </button>
+    );
+  }
+  const start = () => {
+    localStorage.setItem(RIVAL_NAME_KEY, name.trim());
+    setRival(name);
+    setAsking(false);
+  };
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setAsking((a) => !a)}
+        className={pill}
+        style={{ color: "rgba(255,255,255,0.55)", border: "1.5px solid rgba(255,255,255,0.18)" }}
+        title="Rival mode: record someone else's replay as a rival, not your laps"
+      >
+        RIVAL
+      </button>
+      {asking && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            start();
+          }}
+          data-nav
+          className="absolute right-0 top-[38px] z-50 w-[300px] rounded-[12px] border bg-[#070b0a] p-[14px] text-left shadow-xl"
+          style={{ borderColor: RIVAL_COLOR }}
+        >
+          <div className="tech text-[13px]" style={{ color: RIVAL_COLOR }}>
+            Record a rival
+          </div>
+          <p className="mt-[6px] text-[12px] leading-snug text-white/60">
+            Watching someone's replay in GT7? Their laps get saved as a rival to compare against, never as your best. The engineer stays quiet.
+          </p>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Rival's name (optional)"
+            className="mt-[10px] w-full rounded-[8px] border border-white/15 bg-black/60 px-[10px] py-[7px] text-[14px] outline-none focus:border-white/40"
+          />
+          <div className="mt-[10px] flex justify-end gap-[8px]">
+            <button type="button" onClick={() => setAsking(false)} className="tech rounded-[8px] px-[12px] py-[6px] text-[12px] text-white/60">
+              Cancel
+            </button>
+            <button type="submit" className="tech rounded-[8px] px-[12px] py-[6px] text-[12px] font-bold text-black" style={{ background: RIVAL_COLOR }}>
+              Start recording
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status, paused, onClick }: { status: ConnStatus; paused: boolean; onClick: () => void }) {
   const map: Record<ConnStatus["state"], [string, string, boolean]> = {
     idle: ["OFFLINE", "#8b9b96", false],
     searching: ["SEARCHING", "#ffc81a", true],
@@ -265,8 +350,8 @@ function StatusBadge({ status, paused, onClick, at }: { status: ConnStatus; paus
   return (
     <button
       onClick={onClick}
-      className="num absolute flex h-[30px] items-center gap-[10px] whitespace-pre rounded-full px-[14px] text-[14px] font-bold tracking-[0.06em]"
-      style={{ ...at, color, border: `1.5px solid ${color}`, boxShadow: `0 0 10px color-mix(in srgb, ${color} 40%, transparent)` }}
+      className="num flex h-[30px] items-center gap-[10px] whitespace-pre rounded-full px-[14px] text-[14px] font-bold tracking-[0.06em]"
+      style={{ color, border: `1.5px solid ${color}`, boxShadow: `0 0 10px color-mix(in srgb, ${color} 40%, transparent)` }}
       title={status.error ?? (status.ip ? `PlayStation ${status.ip}` : "Connect")}
     >
       {spin ? (

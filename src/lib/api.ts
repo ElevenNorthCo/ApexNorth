@@ -116,6 +116,8 @@ export interface SessionSummary {
   layoutId: string | null;
   venue: string | null;
   country: string | null;
+  /** Someone else's driving (a replay recorded in Rival mode), with their name; null = yours. */
+  rival: string | null;
 }
 
 /** Race settings GT7 doesn't send; the user notes them per session. */
@@ -140,6 +142,8 @@ export interface LapSummary {
   sectorsMs: number[];
   fuelUsedPct: number | null;
   maxSpeed: number;
+  /** The rival's name when this lap is someone else's. */
+  rival: string | null;
 }
 
 export interface Sample {
@@ -257,6 +261,16 @@ export const api = {
   setSessionKind: (sessionId: number, kind: SessionKind | null) => invoke<void>("set_session_kind", { sessionId, kind }),
   setSessionConditions: (sessionId: number, conditions: SessionConditions | null) =>
     invoke<void>("set_session_conditions", { sessionId, conditions }),
+  /** Mark a session as a rival's (their name) or as yours again (null). */
+  setSessionRival: (sessionId: number, rival: string | null) => invoke<void>("set_session_rival", { sessionId, rival }),
+  /** Rival mode: laps from now on are saved as this rival's (null = off). */
+  setRivalMode: (name: string | null) => invoke<void>("set_rival_mode", { name }),
+  rivalMode: () => invoke<string | null>("rival_mode"),
+  /** Markdown report of a session, to paste into an AI chat. */
+  exportSession: (sessionId: number) => invoke<string>("export_session", { sessionId }),
+  /** Markdown report of a lap, against `compareId` when given. */
+  exportLap: (lapId: number, compareId?: number | null) => invoke<string>("export_lap", { lapId, compareId: compareId ?? null }),
+  saveText: (path: string, text: string) => invoke<void>("save_text", { path, text }),
   renameTrack: (trackId: number, name: string) => invoke<void>("rename_track", { trackId, name }),
   trackCatalog: () => invoke<TrackLayout[]>("track_catalog"),
   getSettings: () => invoke<Settings>("get_settings"),

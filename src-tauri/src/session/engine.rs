@@ -343,6 +343,18 @@ impl Engine {
         }
     }
 
+    /// Forget this session's best lap, sectors and delta reference (rival
+    /// mode switched: the laps so far were someone else's, or yours).
+    pub fn forget_bests(&mut self) {
+        self.session_best = None;
+        self.best_sectors = [None; SECTOR_COUNT];
+        self.reference = None;
+        self.grid_lap = None;
+        // GT7's own best so far was set by the other driver: don't show it.
+        self.revoked_ms = self.last.as_ref().map(|p| p.best_lap_ms).filter(|&ms| ms > 0).map(|ms| ms as u32);
+        self.refresh_lap_reference();
+    }
+
     pub fn reference_ms(&self) -> Option<u32> {
         self.reference.as_ref().map(|r| r.time_ms)
     }

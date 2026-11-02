@@ -22,6 +22,9 @@ interface Store {
   lastLap: LapSummary | null;
   /** Bumps whenever a lap is saved, so lists can refresh. */
   lapsVersion: number;
+  /** Rival mode: the rival's name while recording their replay, else null. */
+  rival: string | null;
+  setRival: (name: string | null) => Promise<void>;
   go: (v: View) => void;
   setSettings: (s: Settings) => Promise<void>;
 }
@@ -36,6 +39,11 @@ export const useStore = create<Store>((set) => ({
   voiceError: null,
   lastLap: null,
   lapsVersion: 0,
+  rival: null,
+  setRival: async (name) => {
+    await api.setRivalMode(name);
+    set({ rival: name == null ? null : name.trim() || "Rival" });
+  },
   go: (view) => set({ view }),
   setSettings: async (s) => {
     await api.saveSettings(s);
@@ -49,11 +57,12 @@ let started = false;
 export async function startBridge() {
   if (started) return;
   started = true;
-  const [status, settings, build] = await Promise.all([api.getStatus(), api.getSettings(), api.buildInfo()]);
+  const [status, settings, build, rival] = await Promise.all([api.getStatus(), api.getSettings(), api.buildInfo(), api.rivalMode()]);
   useStore.setState({
     status,
     settings,
     build,
+    rival,
     view: status.state === "idle" && !settings.lastIp ? { name: "connect" } : { name: "dashboard" },
   });
   await listen<LiveState>("telemetry", (e) => useStore.setState({ live: e.payload }));

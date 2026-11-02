@@ -67,6 +67,10 @@ function mock({ fixture, mobile }) {
     voices_dir: () => "/data/voices",
     voice_builtin: () => !mobile,
     demo_running: () => false,
+    rival_mode: () => null,
+    set_rival_mode: () => null,
+    export_session: () => "# ApexNorth session export\n\n(fixture)",
+    export_lap: () => "# ApexNorth lap export\n\n(fixture)",
     "plugin:app|version": () => "0.3.1",
     "plugin:event|listen": ({ event, handler }) => {
       listeners.push({ event, handler });

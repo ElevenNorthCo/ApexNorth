@@ -196,6 +196,8 @@ If the voice can't play, the dashboard shows a red **Voice off** line explaining
   - overlaid traces
 - Synced charts for delta, speed, throttle, brake and gear. Hover any chart to scrub the map.
 - Sector filter (All, or S1–S5) zooms both the charts and the map.
+- **Rival laps.** In events where GT7 lets you watch other drivers' replays, tap **Rival** on the dashboard (optionally with their name) and play the replay: their laps are saved as a rival's, never count as your best, perfect lap or live delta, and the engineer stays quiet. Lap compare picks the fastest rival lap as the ghost. A session recorded before you switched it on can be marked as a rival's on the Session page.
+- **Copy for AI.** The Session page and Lap analysis build a text report to paste into Claude or ChatGPT for coaching: lap and sector times, consistency, every corner (braking point, entry and minimum speed, gear, back to full throttle) and a trace every 50 m. From Lap analysis with a compare lap, each corner is side by side with the time gained or lost there. Copy, share, or save it as a Markdown file.
 
 ### Race engineer voice
 Callouts are spoken offline with the built-in Kokoro voices. The engineer follows the session in real time: sector by sector, through fuel and tyre strategy, to the flag.
@@ -502,6 +504,12 @@ From a live playtest on iPhone; every fix applies to all platforms.
 - [x] Phones: car renders on Activity cards, and a tap anywhere on the dashboard shows the menu (it hides again after a few seconds)
 - [x] iPhone: Karen (Australian English) is the default voice, using her Enhanced or Premium download when installed
 - [x] **Milestone:** 0.5.0 ✔
+
+### ✅ Phase 4.7: Rivals & AI export
+- [x] Rival mode: record someone else's replay as a rival (their name, a red RIVAL tag everywhere), kept out of your bests, the perfect lap and the live delta reference; the engineer is muted while it's on
+- [x] Mark an already recorded session as a rival's (or yours again) on the Session page; Activity shows how far your best is off the rival's
+- [x] Lap compare offers rival laps and picks the fastest one as the ghost
+- [x] **Copy for AI** on the Session page and Lap analysis: a Markdown report with laps, sectors, corners found from the speed trace and a 50 m trace, made for pasting into Claude or ChatGPT
 
 ### 🔜 Next
 - [ ] Refresh the car and track catalogs for the latest GT7 update (new cars and a new track): `scripts/build_gt7_data.py`, then add the new car renders and a track photo

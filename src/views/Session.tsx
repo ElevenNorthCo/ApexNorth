@@ -16,6 +16,8 @@ import { TrackOutline } from "../components/TrackOutline";
 import { TrackArt } from "../components/Art";
 import { Flag } from "../components/Flag";
 import { KINDS, conditionsMatch, kindInfo, sessionKind, trackTitle } from "../lib/media";
+import { ExportDialog } from "../components/ExportDialog";
+import { RIVAL_COLOR } from "./Dashboard";
 
 export function SessionView({ sessionId }: { sessionId: number }) {
   const go = useStore((s) => s.go);
@@ -24,6 +26,7 @@ export function SessionView({ sessionId }: { sessionId: number }) {
   const session = all.find((s) => s.id === sessionId) ?? null;
   const [laps, setLaps] = useState<LapSummary[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [layouts, setLayouts] = useState<TrackLayout[]>([]);
   useEffect(() => {
@@ -56,9 +59,27 @@ export function SessionView({ sessionId }: { sessionId: number }) {
   return (
     <div className="scroll-thin h-full overflow-y-auto pb-16">
       <div className="mx-auto max-w-5xl px-6 pt-6 max-sm:px-4 max-sm:pt-4">
-        <button onClick={() => go({ name: "activity" })} className="tech flex items-center gap-1 text-[14px] text-white/70 hover:text-accent">
-          <Back /> Activity
-        </button>
+        <div className="flex items-center justify-between">
+          <button onClick={() => go({ name: "activity" })} className="tech flex items-center gap-1 text-[14px] text-white/70 hover:text-accent">
+            <Back /> Activity
+          </button>
+          {session && (
+            <button
+              onClick={() => setExporting(true)}
+              className="tech rounded-[10px] border border-accent/60 px-3 py-1.5 text-[13px] text-accent hover:bg-accent/10"
+              title="Copy this session as text for Claude or ChatGPT"
+            >
+              Copy for AI
+            </button>
+          )}
+        </div>
+        {exporting && session && (
+          <ExportDialog
+            load={() => api.exportSession(session.id)}
+            filename={`apexnorth-session-${session.id}.md`}
+            onClose={() => setExporting(false)}
+          />
+        )}
 
         {session && (
           <div
@@ -113,6 +134,11 @@ export function SessionView({ sessionId }: { sessionId: number }) {
                     {trackTitle(session)[1] && <div className="tech mt-1.5 text-[15px] text-white/60">{trackTitle(session)[1]}</div>}
                   </>
                 )}
+                {session.rival != null && (
+                  <div className="tech mt-2 inline-block rounded-[6px] px-2 py-0.5 text-[12px] font-bold text-black" style={{ background: RIVAL_COLOR }}>
+                    Rival · {session.rival}
+                  </div>
+                )}
                 <div className="mt-3 text-[15px] text-white/70">
                   {shortDate(session.startedAt)} · {timeOfDay(session.startedAt)} · {carName(session.carCode, session.carName)}
                   {session.totalLaps > 0 && ` · ${session.totalLaps} lap race distance`}
@@ -125,10 +151,11 @@ export function SessionView({ sessionId }: { sessionId: number }) {
           </div>
         )}
 
+        {session && <RivalPicker session={session} onChange={load} />}
         {session && <KindPicker session={session} onChange={load} />}
         {session && <ConditionsPicker session={session} laps={laps} onChange={load} />}
         {session && <PerfectLap session={session} laps={laps} best={best} />}
-        {session && <TrackComparison session={session} all={all} />}
+        {session && session.rival == null && <TrackComparison session={session} all={all} />}
 
         <h2 className="tech mb-2 mt-8 text-[13px] text-white/50">Laps</h2>
         <div className="overflow-x-auto rounded-[14px] border border-laptime/50 bg-black/40 shadow-[0_0_14px_rgba(31,168,255,0.15)]">
@@ -203,6 +230,65 @@ export function SessionView({ sessionId }: { sessionId: number }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Whose driving this is. A session recorded from someone else's replay is
+ * a rival's: it stays out of your bests and becomes a ghost to chase.
+ */
+function RivalPicker({ session, onChange }: { session: SessionSummary; onChange: () => void }) {
+  const [name, setName] = useState<string | null>(null);
+  const set = async (rival: string | null) => {
+    await api.setSessionRival(session.id, rival);
+    setName(null);
+    onChange();
+  };
+  const seg = (active: boolean, color: string) => ({
+    className: "tech shrink-0 border-r border-white/10 px-4 py-2 text-[13px] last:border-r-0 max-sm:px-3",
+    style: active
+      ? { color, background: `color-mix(in srgb, ${color} 14%, transparent)`, boxShadow: `inset 0 0 0 1.5px ${color}` }
+      : { color: "rgba(255,255,255,0.6)" },
+  });
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-4">
+      <span className="tech text-[13px] text-white/50">Driver</span>
+      <div className="flex overflow-hidden rounded-[10px] border border-white/10 bg-black/40">
+        <button onClick={() => session.rival != null && set(null)} {...seg(session.rival == null, "var(--color-accent)")}>
+          Me
+        </button>
+        <button onClick={() => setName(session.rival ?? "")} {...seg(session.rival != null, RIVAL_COLOR)}>
+          Rival
+        </button>
+      </div>
+      {name != null ? (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            set(name);
+          }}
+        >
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Rival's name"
+            className="rounded-[10px] border border-white/15 bg-black/60 px-3 py-1.5 text-[14px] outline-none focus:border-white/40"
+          />
+          <button type="submit" className="tech rounded-[10px] px-3 py-1.5 text-[13px] font-bold text-black" style={{ background: RIVAL_COLOR }}>
+            Save
+          </button>
+          <button type="button" onClick={() => setName(null)} className="tech text-[13px] text-white/50">
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <span className="text-[12px] text-white/40">
+          {session.rival != null ? "Someone else's replay: not counted as your best, use it as a ghost in lap compare." : "Recorded someone else's replay? Mark it as a rival."}
+        </span>
+      )}
     </div>
   );
 }
@@ -329,7 +415,7 @@ function TrackComparison({ session, all }: { session: SessionSummary; all: Sessi
     api.trackLaps(session.trackId, session.carCode, 5000).then(setTrackLaps).catch(() => setTrackLaps([]));
   }, [session.trackId, session.carCode, all]);
   if (session.trackId == null) return null;
-  const atTrack = all.filter((s) => s.trackId === session.trackId && s.carCode === session.carCode);
+  const atTrack = all.filter((s) => s.trackId === session.trackId && s.carCode === session.carCode && s.rival == null);
   const here = atTrack.filter((s) => conditionsMatch(s.conditions, session.conditions));
   const skipped = atTrack.length - here.length;
   const rows = KINDS.map((k) => {
@@ -423,7 +509,10 @@ function PerfectLap({ session, laps, best }: { session: SessionSummary; laps: La
   const [trackLaps, setTrackLaps] = useState<LapSummary[]>([]);
   useEffect(() => {
     if (session.trackId == null) return;
-    api.trackLaps(session.trackId, session.carCode, 5000).then(setTrackLaps).catch(() => setTrackLaps([]));
+    api
+      .trackLaps(session.trackId, session.carCode, 5000)
+      .then((all) => setTrackLaps(all.filter((l) => l.rival == null)))
+      .catch(() => setTrackLaps([]));
   }, [session.trackId, session.carCode, laps]);
   const here = useMemo(() => bestSectors(laps), [laps]);
   const ever = useMemo(() => bestSectors(trackLaps.length ? trackLaps : laps), [trackLaps, laps]);
@@ -450,7 +539,7 @@ function PerfectLap({ session, laps, best }: { session: SessionSummary; laps: La
             ))}
           </div>
         </div>
-        {everMs != null && trackLaps.length > 0 && (
+        {everMs != null && trackLaps.length > 0 && session.rival == null && (
           <div className="min-w-[200px] rounded-[12px] border border-white/15 bg-black/40 p-4 max-sm:flex-1">
             <div className="tech text-[13px] text-white/60">All-time, this car</div>
             <div className="num mt-2 text-[26px] font-bold leading-none">{lapTime(everMs)}</div>

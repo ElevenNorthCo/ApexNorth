@@ -58,6 +58,9 @@ pub struct SessionSummary {
     pub layout_id: Option<String>,
     pub venue: Option<String>,
     pub country: Option<String>,
+    /// Someone else's driving (a replay recorded as a rival), with their
+    /// name. Rival laps never count as your best.
+    pub rival: Option<String>,
 }
 
 /// Settings a race was run with, tagged by the user. GT7 sends none of
@@ -92,6 +95,8 @@ pub struct LapSummary {
     pub sectors_ms: Vec<u32>,
     pub fuel_used_pct: Option<f64>,
     pub max_speed: f64,
+    /// Rival's name when the lap is someone else's (see `SessionSummary::rival`).
+    pub rival: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -126,7 +131,8 @@ pub fn perfect_lap(laps: &[Vec<u32>]) -> Option<i64> {
         .sum()
 }
 
-const LAP_COLS: &str = "l.id, l.session_id, l.lap_no, l.time_ms, l.is_pit, l.is_valid, l.sectors, l.fuel_used, l.max_speed, l.invalid_reason";
+/// Lap columns; the query must join `sessions s` (for the rival name).
+const LAP_COLS: &str = "l.id, l.session_id, l.lap_no, l.time_ms, l.is_pit, l.is_valid, l.sectors, l.fuel_used, l.max_speed, l.invalid_reason, s.rival";
 
 fn lap_row(r: &rusqlite::Row) -> rusqlite::Result<LapSummary> {
     let sectors: String = r.get(6)?;
@@ -141,6 +147,7 @@ fn lap_row(r: &rusqlite::Row) -> rusqlite::Result<LapSummary> {
         fuel_used_pct: r.get(7)?,
         max_speed: r.get(8)?,
         invalid_reason: r.get(9)?,
+        rival: r.get(10)?,
     })
 }
 
@@ -219,6 +226,14 @@ impl Db {
         if !has_conditions {
             // JSON SessionConditions; NULL = not noted.
             conn.execute_batch("ALTER TABLE sessions ADD COLUMN conditions TEXT").map_err(err)?;
+        }
+        let has_rival: bool = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'rival'", [], |r| r.get::<_, i64>(0))
+            .map_err(err)?
+            > 0;
+        if !has_rival {
+            // Rival's name for a recorded replay of someone else; NULL = yours.
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN rival TEXT").map_err(err)?;
         }
         Ok(Db { conn })
     }
@@ -474,7 +489,7 @@ impl Db {
             .conn
             .query_row(
                 "SELECT l.time_ms, l.samples FROM laps l JOIN sessions s ON s.id = l.session_id
-                 WHERE s.track_id = ?1 AND s.car_code = ?2 AND l.is_valid = 1
+                 WHERE s.track_id = ?1 AND s.car_code = ?2 AND l.is_valid = 1 AND s.rival IS NULL
                  ORDER BY l.time_ms ASC LIMIT 1",
                 params![track_id, car_code],
                 |r| Ok((r.get(0)?, r.get(1)?)),
@@ -490,7 +505,7 @@ impl Db {
             .prepare(
                 "SELECT s.id, s.track_id, t.name, s.car_code, s.started_at, s.total_laps,
                         COUNT(l.id), MIN(CASE WHEN l.is_valid = 1 THEN l.time_ms END), t.outline,
-                        AVG(CASE WHEN l.is_valid = 1 AND l.is_pit = 0 THEN l.time_ms END), s.kind, t.layout_id, s.conditions
+                        AVG(CASE WHEN l.is_valid = 1 AND l.is_pit = 0 THEN l.time_ms END), s.kind, t.layout_id, s.conditions, s.rival
                  FROM sessions s
                  LEFT JOIN tracks t ON t.id = s.track_id
                  JOIN laps l ON l.session_id = s.id
@@ -522,6 +537,7 @@ impl Db {
                     venue: layout.map(|l| l.venue.clone()),
                     country: layout.map(|l| l.country.clone()),
                     layout_id,
+                    rival: r.get(13)?,
                 })
             })
             .map_err(err)?;
@@ -545,7 +561,7 @@ impl Db {
     pub fn session_laps(&self, session_id: i64) -> Result<Vec<LapSummary>> {
         let mut stmt = self
             .conn
-            .prepare(&format!("SELECT {LAP_COLS} FROM laps l WHERE l.session_id = ?1 ORDER BY l.lap_no"))
+            .prepare(&format!("SELECT {LAP_COLS} FROM laps l JOIN sessions s ON s.id = l.session_id WHERE l.session_id = ?1 ORDER BY l.lap_no"))
             .map_err(err)?;
         let rows = stmt.query_map([session_id], lap_row).map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
@@ -553,6 +569,7 @@ impl Db {
 
     /// Valid laps with the same car on the same track (any session), fastest
     /// first, for comparison. Another car's lap isn't a fair reference.
+    /// Rival laps are included (marked `rival`) so they can be the ghost.
     pub fn track_laps(&self, track_id: i64, car_code: i32, limit: i64) -> Result<Vec<LapSummary>> {
         let mut stmt = self
             .conn
@@ -575,8 +592,8 @@ impl Db {
                 ),
                 [lap_id],
                 |r| {
-                    let blob: Vec<u8> = r.get(13)?;
-                    Ok((lap_row(r)?, r.get(10)?, r.get(11)?, r.get(12)?, blob))
+                    let blob: Vec<u8> = r.get(14)?;
+                    Ok((lap_row(r)?, r.get(11)?, r.get(12)?, r.get(13)?, blob))
                 },
             )
             .map_err(err)
@@ -639,7 +656,7 @@ impl Db {
     pub fn tyre_fade_per_wear(&self, session_id: i64, track_id: i64, car_code: i32) -> Result<Option<f32>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, conditions FROM sessions WHERE track_id = ?1 AND car_code = ?2 AND id != ?3 AND conditions IS NOT NULL")
+            .prepare("SELECT id, conditions FROM sessions WHERE track_id = ?1 AND car_code = ?2 AND id != ?3 AND conditions IS NOT NULL AND rival IS NULL")
             .map_err(err)?;
         let sessions: Vec<(i64, String)> = stmt
             .query_map(params![track_id, car_code, session_id], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -669,6 +686,16 @@ impl Db {
         }
         self.conn
             .execute("UPDATE sessions SET kind = ?1 WHERE id = ?2", params![kind, session_id])
+            .map_err(err)?;
+        Ok(())
+    }
+
+    /// Mark a session as a rival's driving (a recorded replay), with their
+    /// name, or as yours again (None).
+    pub fn set_session_rival(&self, session_id: i64, rival: Option<&str>) -> Result<()> {
+        let rival = rival.map(str::trim).map(|n| if n.is_empty() { "Rival" } else { n });
+        self.conn
+            .execute("UPDATE sessions SET rival = ?1 WHERE id = ?2", params![rival, session_id])
             .map_err(err)?;
         Ok(())
     }
@@ -749,6 +776,30 @@ mod tests {
             start_pos: [100.0, 0.0, 200.0],
             samples: vec![Sample { t: 10, d: 5.0, spd: 100.0, ..Default::default() }; 50],
         }
+    }
+
+    #[test]
+    fn rival_laps_never_count_as_yours() {
+        let db = Db::memory().unwrap();
+        let t = db.identify_track([100.0, 0.0, 200.0], 3000.0, &[]).unwrap();
+        let mine = db.create_session(1234, 0, 1).unwrap();
+        let rival = db.create_session(1234, 0, 2).unwrap();
+        db.set_session_track(mine, t.id).unwrap();
+        db.set_session_track(rival, t.id).unwrap();
+        db.insert_lap(mine, &lap(95_000, true)).unwrap();
+        db.insert_lap(rival, &lap(91_000, true)).unwrap();
+        db.set_session_rival(rival, Some(" ")).unwrap();
+        assert_eq!(db.best_lap_for(t.id, 1234).unwrap().map(|b| b.0), Some(95_000));
+        let laps = db.track_laps(t.id, 1234, 10).unwrap();
+        assert_eq!(laps[0].rival.as_deref(), Some("Rival"), "an empty name becomes Rival");
+        assert_eq!(laps[1].rival, None);
+        let sessions = db.list_sessions().unwrap();
+        assert_eq!(sessions.iter().find(|s| s.id == rival).unwrap().rival.as_deref(), Some("Rival"));
+        assert_eq!(db.session_laps(rival).unwrap()[0].rival.as_deref(), Some("Rival"));
+        assert_eq!(db.lap_detail(laps[0].id).unwrap().summary.rival.as_deref(), Some("Rival"));
+        // Yours again.
+        db.set_session_rival(rival, None).unwrap();
+        assert_eq!(db.best_lap_for(t.id, 1234).unwrap().map(|b| b.0), Some(91_000));
     }
 
     #[test]
